@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pluglabs.dev/schemas/plugtrace-report-0.2.1.json",
+  "title": "PlugTrace Report",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "privacyMode", "deployment", "baseline", "changes", "issues", "suspects", "executiveSummary"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "0.2.1" },
+    "generatedAt": { "type": "string" },
+    "privacyMode": { "type": "string" },
+    "scope": { "type": "object" },
+    "platform": { "type": "object" },
+    "release": {
+      "type": "object",
+      "description": "Optional PlugDev (or external) release identity — additive in 0.2.1",
+      "properties": {
+        "schemaVersion": { "type": "string" },
+        "gitCommit": { "type": ["string", "null"] },
+        "gitDirty": { "type": "boolean" },
+        "buildSystem": { "type": ["string", "null"] },
+        "buildTask": { "type": ["string", "null"] },
+        "artifactHash": { "type": ["string", "null"] },
+        "projectName": { "type": ["string", "null"] },
+        "sessionId": { "type": ["string", "null"] },
+        "plugdevVersion": { "type": ["string", "null"] },
+        "recordedAt": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "executiveSummary": { "type": "object" },
+    "preview": { "type": "array", "items": { "type": "string" } },
+    "redactionWarnings": { "type": "array", "items": { "type": "string" } },
+    "deployment": { "type": "object" },
+    "baseline": { "type": "object" },
+    "changes": { "type": "array" },
+    "issues": { "type": "array" },
+    "suspects": { "type": "array" },
+    "annotations": { "type": "array" },
+    "spark": { "type": "object" }
+  },
+  "additionalProperties": true
+}

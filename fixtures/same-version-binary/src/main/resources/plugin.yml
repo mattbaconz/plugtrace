@@ -1,0 +1,5 @@
+name: PlugTraceFixtureSameVersion
+version: '2.4.0'
+main: dev.pluglabs.plugtrace.fixtures.sameversion.SameVersionPlugin
+api-version: '1.21'
+description: Fixture for same-version different-binary detection (flip BUILD_MARKER between builds).

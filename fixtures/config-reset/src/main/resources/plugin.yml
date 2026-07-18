@@ -1,0 +1,5 @@
+name: PlugTraceFixtureConfigReset
+version: '1.0.0'
+main: dev.pluglabs.plugtrace.fixtures.configreset.ConfigResetPlugin
+api-version: '1.21'
+description: Fixture that wipes and rewrites its config on enable for PlugTrace config-history tests.

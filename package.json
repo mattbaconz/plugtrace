@@ -1,0 +1,13 @@
+{
+  "name": "plugtrace",
+  "private": true,
+  "devDependencies": {
+    "@plugdev/cli": "^0.12.6"
+  },
+  "scripts": {
+    "setup": "plugdev setup",
+    "dev": "plugdev run",
+    "dev:server": "plugdev",
+    "dev:watch": "plugdev watch"
+  }
+}

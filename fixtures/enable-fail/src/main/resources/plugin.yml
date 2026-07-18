@@ -1,0 +1,5 @@
+name: PlugTraceFixtureEnableFail
+version: '1.0.0'
+main: dev.pluglabs.plugtrace.fixtures.enablefail.EnableFailPlugin
+api-version: '1.21'
+description: Fixture that fails on enable for PlugTrace regression tests.

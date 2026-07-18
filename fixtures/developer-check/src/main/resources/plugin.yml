@@ -1,0 +1,5 @@
+name: PlugTraceFixtureDeveloperCheck
+version: '1.0.0'
+main: dev.pluglabs.plugtrace.fixtures.developercheck.DeveloperCheckPlugin
+api-version: '1.21'
+description: Fixture that trips an assertion-style developer check for PlugTrace issue capture.

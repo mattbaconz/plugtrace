@@ -1,0 +1,5 @@
+name: PlugTraceFixtureEventThrow
+version: '1.0.0'
+main: dev.pluglabs.plugtrace.fixtures.eventthrow.EventThrowPlugin
+api-version: '1.21'
+description: Fixture that throws from an event handler for PlugTrace fingerprint tests.

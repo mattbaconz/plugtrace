@@ -1,0 +1,6 @@
+name: PlugTraceFixtureMissingService
+version: '1.0.0'
+main: dev.pluglabs.plugtrace.fixtures.missingservice.MissingServicePlugin
+api-version: '1.21'
+softdepend: [Vault, LuckPerms]
+description: Fixture that fails when an expected soft-dependent service is missing.

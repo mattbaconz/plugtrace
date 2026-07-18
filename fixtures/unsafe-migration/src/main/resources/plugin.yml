@@ -1,0 +1,5 @@
+name: PlugTraceFixtureUnsafeMigration
+version: '2.0.0'
+main: dev.pluglabs.plugtrace.fixtures.unsafemigration.UnsafeMigrationPlugin
+api-version: '1.21'
+description: Fixture that mutates on-disk data without a safe migration path.

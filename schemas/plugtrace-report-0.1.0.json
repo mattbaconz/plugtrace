@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pluglabs.dev/schemas/plugtrace-report-0.1.0.json",
+  "title": "PlugTrace Report",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "privacyMode", "deployment", "baseline", "changes", "issues", "suspects"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "0.1.0" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "privacyMode": { "type": "string" },
+    "preview": { "type": "array", "items": { "type": "string" } },
+    "redactionWarnings": { "type": "array", "items": { "type": "string" } },
+    "deployment": { "type": "object" },
+    "baseline": { "type": "object" },
+    "changes": { "type": "array" },
+    "issues": { "type": "array" },
+    "suspects": { "type": "array" }
+  },
+  "additionalProperties": true
+}

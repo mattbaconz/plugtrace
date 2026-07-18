@@ -1,0 +1,38 @@
+name: PlugTrace
+version: '0.4.0'
+main: dev.pluglabs.plugtrace.paper.PlugTracePlugin
+api-version: '1.21'
+authors: [PlugLabs]
+description: Deployment safety for Minecraft servers. Know whether your update actually worked.
+website: https://plugtrace.dev
+commands:
+  plugtrace:
+    description: PlugTrace deployment safety and forensics
+    usage: /plugtrace <status|checkpoint|verify|expected|deployments|diff|issues|incidents|report|web|restore|reload|selfcheck>
+    aliases: [ptrace, pt]
+permissions:
+  plugtrace.admin:
+    description: Administer PlugTrace
+    default: op
+    children:
+      plugtrace.view: true
+      plugtrace.checkpoint: true
+      plugtrace.verify: true
+      plugtrace.report: true
+      plugtrace.mark: true
+      plugtrace.restore: true
+      plugtrace.web.admin: true
+  plugtrace.view:
+    default: op
+  plugtrace.checkpoint:
+    default: op
+  plugtrace.verify:
+    default: op
+  plugtrace.report:
+    default: op
+  plugtrace.mark:
+    default: op
+  plugtrace.restore:
+    default: op
+  plugtrace.web.admin:
+    default: op

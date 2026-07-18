@@ -1,0 +1,9 @@
+name: PlugTraceFixtureCommandLoss
+version: '1.0.0'
+main: dev.pluglabs.plugtrace.fixtures.commandloss.CommandLossPlugin
+api-version: '1.21'
+description: Fixture that declares a command then fails to register its executor.
+commands:
+  ptfixtest:
+    description: Declared command that never gets a working executor.
+    usage: /ptfixtest

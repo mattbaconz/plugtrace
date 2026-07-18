@@ -1,0 +1,5 @@
+name: PlugTraceFixtureDelayedError
+version: '1.0.0'
+main: dev.pluglabs.plugtrace.fixtures.delayederror.DelayedErrorPlugin
+api-version: '1.21'
+description: Fixture that succeeds enable then fails later on a delayed task for PlugTrace observation-window tests.

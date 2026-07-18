@@ -1,0 +1,6 @@
+name: PlugTraceFixtureMissingDep
+version: '1.0.0'
+main: dev.pluglabs.plugtrace.fixtures.missingdep.MissingDepPlugin
+api-version: '1.21'
+depend: [NonexistentProvider]
+description: Fixture that declares a missing hard dependency for PlugTrace startup regression tests.

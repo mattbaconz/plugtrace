@@ -1,0 +1,49 @@
+# PlugTrace operator defaults — local-first, hash-only configs.
+# Edit then run: /plugtrace reload
+#
+# Canonical hardcoded thresholds (NOT config keys — see feature catalog):
+# - config reset evidence: ≥40% fewer structural keys AND ≥40% fewer bytes
+# - MSPT warning: five-minute median +10 ms AND +50%
+# - verification mid-window probe: 5 minutes after ready
+
+retention:
+  # Max deployment rows retained in SQLite
+  deployments: 100
+  # Truncated stack samples kept per issue fingerprint
+  rawSamplesPerIssue: 3
+  # Phase 5 JAR retention under plugins/PlugTrace/retained/
+  enabled: true
+  jarMaxMb: 512
+  jarVersionsPerComponent: 3
+
+verification:
+  # Applied when the server reaches ready (not mid-flight on /plugtrace reload)
+  initialDelaySeconds: 30
+  observationMinutes: 15
+
+# Optional operator-owned expectations. Captured expected state (/plugtrace expected capture)
+# and the last healthy baseline are also used automatically.
+expected:
+  plugins: []
+  commands: []
+  worlds: []
+  services: []
+
+# Report privacy. Only hash-only is implemented in 0.4.0.
+# Planned (not shipped): strict | standard | support-detailed
+privacy:
+  mode: hash-only
+
+web:
+  enabled: true
+  bind: 127.0.0.1
+  port: 9465
+  # Non-loopback bind requires allowRemote: true and a TLS reverse proxy
+  allowRemote: false
+
+# Optional hosted reports (explicit /plugtrace report upload only — never automatic).
+cloud:
+  enabled: true
+  uploadUrl: https://plugtrace.dev/
+  viewerUrl: https://plugtrace.dev/
+  ttlDays: 14
