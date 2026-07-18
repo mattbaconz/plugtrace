@@ -8,7 +8,7 @@ class BukkitArtifactTest {
     @Test void descriptorIsExplicitlyNonFoliaAndLocalWebIsPackaged() throws Exception {
         String descriptor = resource("/plugin.yml");
         assertFalse(descriptor.contains("folia-supported: true"));
-        assertTrue(descriptor.contains("version: '0.4.0'"));
+        assertTrue(descriptor.contains("version: '0.5.0'"));
         assertTrue(descriptor.contains("api-version: '1.20'"));
         assertTrue(resource("/web/index.html").contains("PlugTrace Web"));
     }

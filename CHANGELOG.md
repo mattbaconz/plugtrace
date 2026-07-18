@@ -18,6 +18,7 @@ External dogfood packaging. Marketplace listings stay frozen until seven-day soa
 ### [fixed]
 - Feature catalog and marketplace drafts aligned to passing matrix rows only (no Pufferfish claim; Spigot Experimental only)
 - Public clone messaging synced to early public release language (private alpha wording scrubbed where it contradicted shipped 0.5 packaging)
+- Artifact tests pin `plugin.yml` version to **0.5.0**; Folia/Bukkit `processResources` and paper `sourcesJar`/`jar` depend on `:paper-modern:copyWebUi` so `clean matrixSmoke` packages the web UI reliably
 
 ## 0.4.0 — private alpha (unlisted)
 

@@ -42,13 +42,17 @@ tasks.register<Copy>("copyWebUi") {
 }
 
 tasks.named<ProcessResources>("processResources") {
-    mustRunAfter("copyWebUi")
+    dependsOn("copyWebUi")
+}
+
+tasks.named<Jar>("sourcesJar") {
+    dependsOn("copyWebUi")
 }
 
 tasks.jar {
     archiveBaseName.set("PlugTrace")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    dependsOn(configurations.runtimeClasspath)
+    dependsOn(configurations.runtimeClasspath, "copyWebUi")
     from({
         configurations.runtimeClasspath.get()
             .filter { it.name.endsWith(".jar") }

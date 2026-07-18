@@ -35,6 +35,7 @@ tasks.jar {
 }
 
 tasks.named<ProcessResources>("processResources") {
+    dependsOn(":paper-modern:copyWebUi")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(project(":paper-modern").file("src/main/resources/web")) { into("web") }
 }
