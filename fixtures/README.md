@@ -1,6 +1,6 @@
 # PlugTrace server fixtures
 
-Intentional failure / behavior plugins for local farm testing.
+Intentional failure / behavior plugins for ephemeral farm and soak drills.
 
 | Module | Failure mode |
 |--------|----------------|

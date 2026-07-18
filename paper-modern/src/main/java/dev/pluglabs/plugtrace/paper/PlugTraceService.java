@@ -125,7 +125,7 @@ public final class PlugTraceService implements AutoCloseable {
     private List<Change> currentChanges = List.of();
     private List<Suspect> currentSuspects = List.of();
     private String baselineDescription = "No reliable baseline exists yet.";
-    private PlatformInfo platformInfo = new PlatformInfo("paper", "Unverified runtime", "paper-modern");
+    private PlatformInfo platformInfo = new PlatformInfo("paper", "Private alpha (unverified runtime)", "paper-modern");
     private NoiseRules noiseRules = NoiseRules.empty();
     private boolean sparkDetected;
     private String sparkVersion;

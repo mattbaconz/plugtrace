@@ -1,5 +1,5 @@
-name: PlugTrace
-version: '0.4.0'
+﻿name: PlugTrace
+version: '0.5.0'
 main: dev.pluglabs.plugtrace.paper.PlugTracePlugin
 api-version: '1.20'
 authors: [PlugLabs]

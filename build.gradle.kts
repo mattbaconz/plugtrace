@@ -1,4 +1,4 @@
-import java.security.MessageDigest
+﻿import java.security.MessageDigest
 
 plugins {
     java
@@ -6,7 +6,7 @@ plugins {
 
 allprojects {
     group = "dev.pluglabs.plugtrace"
-    version = "0.4.0"
+    version = "0.5.0"
 
     repositories {
         mavenCentral()
@@ -61,7 +61,7 @@ tasks.register("printArtifacts") {
             }
             val jars = libs.listFiles().orEmpty()
                 .filter { f -> f.isFile && f.name.endsWith(".jar") && !f.name.contains("-sources") && !f.name.contains("-javadoc") }
-                .filter { f -> f.name.contains("-0.4.0.jar") || f.name.endsWith("-0.4.0.jar") }
+                .filter { f -> f.name.contains("-0.5.0.jar") || f.name.endsWith("-0.5.0.jar") }
                 .sortedBy { f -> f.name }
             for (jar in jars) {
                 digest.reset()
@@ -94,13 +94,14 @@ tasks.register("matrixSmoke") {
         check(webIndex.isFile) { "Missing bundled web UI at ${webIndex.path}" }
         println("")
         println("=== PlugTrace matrix smoke claims ===")
-        println("paper-modern  | Paper-family | primary artifact (Java 21)")
-        println("folia         | Folia        | Folia-only artifact (Java 21)")
-        println("bukkit-modern | Bukkit       | Experimental Spigot/Bukkit adapter (Java 17)")
-        println("pufferfish                   | Unverified")
+        println("paper-modern  | Paper-family | dogfood: Paper 1.21.4/J21, 26.1.2/J25, Purpur 1.21.4/J21; soak day-0")
+        println("folia         | Folia        | dogfood: 1.21.11/Java 21 observation harness; soak day-0")
+        println("bukkit-modern | Bukkit       | Spigot 1.20.1+1.20.4/Java 17 live PASS; Experimental capability set")
+        println("pufferfish                   | Unverified (no downloadable jar from farm probes)")
         println("legacy/proxy/modloader       | deferred")
-        println("Upgrade notes: DB schema v3, report 1.0.0, product 0.4.0")
+        println("Upgrade notes: DB schema v3, report 1.0.0, product 0.5.0")
         println("Web UI: bundled under paper-modern/src/main/resources/web (copied to folia/bukkit JARs)")
+        println("Release checklist: private alpha; marketplace freeze active")
         println("OK - claims must match ARTIFACTS.md and /plugtrace compatibility")
     }
 }

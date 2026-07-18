@@ -492,7 +492,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         if (platform.migrateHint() != null) {
             sender.sendMessage("- Migrate: " + platform.migrateHint());
         } else if ("folia".equals(platform.forkFamily())) {
-            sender.sendMessage("- Folia: correct artifact; use the Folia JAR only");
+            sender.sendMessage("- Folia: correct artifact; live soak and certification are still pending");
         } else {
             sender.sendMessage("- Folia: use PlugTrace-folia when running Folia");
         }
