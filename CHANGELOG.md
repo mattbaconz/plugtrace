@@ -1,13 +1,23 @@
 # Changelog
 
-## 0.5.0 — external dogfood (unlisted until freeze lift)
+## 0.5.0 - 2026-07-18
 
-- Fixture farm evidence PASS for delayed-error, config-reset, missing-service, command-loss, wrapper-chain, developer-check, unsafe-migration, event-throw, missing-dependency, same-version-binary, enable-fail (Paper 1.21.4).
-- Pufferfish: probed unavailable; **do not claim** until farm PASS.
-- Spigot 1.20.1 / 1.20.4 live boots remain PASS (Experimental); soak still open for Certified tiers.
-- Hosted reports: purge endpoint `/api/v1/cron/purge`; privacy ADR Accepted; defaults remain `https://plugtrace.dev/`.
-- Marketplace drafts claim-mapped from farm evidence — **DO NOT PUBLISH** until owner freeze lift + soak day 7 + trust gates.
-- Seven-day Paper/Folia soak: continue daily `Log-SoakDay.ps1` (day 1 logged 2026-07-18); do not tick RELEASE soak until day 7 both targets.
+External dogfood packaging. Marketplace listings stay frozen until seven-day soak, trust gates, and owner freeze lift.
+
+### [added]
+- Fixture farm evidence PASS on Paper 1.21.4 for delayed-error, config-reset, missing-service, command-loss, wrapper-chain, developer-check, unsafe-migration, event-throw, missing-dependency, same-version-binary, and enable-fail
+- Hosted purge API `/api/v1/cron/purge` for expired ciphertext reports (privacy ADR Accepted)
+- Claim-mapped marketplace drafts from farm evidence (still unpublished)
+
+### [changed]
+- Release status: early public / external dogfood at **0.5.0** (listings still frozen until soak day 7 + trust + owner freeze lift)
+- Pufferfish: probed unavailable → **do not claim** until farm PASS
+- Spigot 1.20.1 / 1.20.4 kept as Experimental dogfood (PASS boots; not Certified soak)
+- Hosted report defaults remain `https://plugtrace.dev/`
+
+### [fixed]
+- Feature catalog and marketplace drafts aligned to passing matrix rows only (no Pufferfish claim; Spigot Experimental only)
+- Public clone messaging synced to early public release language (private alpha wording scrubbed where it contradicted shipped 0.5 packaging)
 
 ## 0.4.0 — private alpha (unlisted)
 
@@ -29,8 +39,7 @@
 
 Phases 3–5 user-visible for internal operators. Marketplace listing still blocked.
 
-### Added
-
+### [added]
 - PlugDev release identity ingest (`plugdev-identity.json`) on reports and status
 - Three artifacts: `paper-modern`, `folia` (separate scheduler artifact), `bukkit-modern` (Experimental)
 - Folia-safe `SchedulerFacade` for store I/O; `matrixSmoke` build gate
@@ -40,8 +49,7 @@ Phases 3–5 user-visible for internal operators. Marketplace listing still bloc
 - Selfcheck performance block: queue depth, dropped events, last snapshot ms, DB size, retained JAR bytes
 - Offline tool: `OfflineRestoreFinalizer` / `./gradlew :core-domain:finalizeRestore`
 
-### Changed
-
+### [changed]
 - In-plugin `restore finalize` refuses live JAR swaps while the server is running (points at offline finalize)
 - Staging requires explicit `confirm` / `--confirm` after reviewing migration warnings
 - Post-restore `complete` tags deployment `restored-from-baseline` and annotates ops
