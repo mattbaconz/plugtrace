@@ -106,6 +106,11 @@ final class StackOwnershipIndex {
         if (!trimmed.startsWith("at ")) return null;
         int open = trimmed.indexOf('(');
         String method = open < 0 ? trimmed.substring(3) : trimmed.substring(3, open);
+        // Paper/Java 9+ frames: "Shop.jar//com.acme.shop.Menu.open" or "Shop.jar/module/com.acme..."
+        int slash = method.lastIndexOf('/');
+        if (slash >= 0 && slash < method.length() - 1) {
+            method = method.substring(slash + 1);
+        }
         int lastDot = method.lastIndexOf('.');
         return lastDot <= 0 ? null : method.substring(0, lastDot);
     }

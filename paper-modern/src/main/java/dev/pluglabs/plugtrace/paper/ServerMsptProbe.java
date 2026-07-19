@@ -2,9 +2,12 @@ package dev.pluglabs.plugtrace.paper;
 
 import java.lang.reflect.Method;
 import java.util.OptionalDouble;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** Optional Paper-family MSPT probe kept reflective so reduced-capability artifacts fail closed. */
 final class ServerMsptProbe {
+    private static final AtomicReference<Method> CACHED = new AtomicReference<>();
+
     private ServerMsptProbe() {}
 
     static OptionalDouble sample(Object server) {
@@ -12,7 +15,11 @@ final class ServerMsptProbe {
             return OptionalDouble.empty();
         }
         try {
-            Method method = server.getClass().getMethod("getAverageTickTime");
+            Method method = CACHED.get();
+            if (method == null || method.getDeclaringClass() != server.getClass()) {
+                method = server.getClass().getMethod("getAverageTickTime");
+                CACHED.set(method);
+            }
             Object value = method.invoke(server);
             if (!(value instanceof Number number)) {
                 return OptionalDouble.empty();

@@ -18,7 +18,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $outDir = Join-Path $root 'farm\jars'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-$ua = 'PlugTraceFarm/0.4 (+https://github.com/mattbaconz/plugtrace)'
+$ua = 'PlugTraceFarm/0.4 (+https://github.com/pluglabs; private dogfood)'
 
 function Get-FillJar {
     param($Project, $Version, $Build)

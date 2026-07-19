@@ -1,4 +1,4 @@
-﻿.gradle/
+.gradle/
 build/
 **/build/
 out/
@@ -12,16 +12,12 @@ out/
 .DS_Store
 build-error.txt
 web-ui/dist/
-web-ui/node_modules/
 web-ui/*.tsbuildinfo
-node_modules/
-.plugdev/
+web-ui/vite.config.js
+web-ui/vite.config.d.ts
 farm/jars/
 farm/buildtools-*/
 farm/runs/
-# Local dogfood / soak / trust evidence — never publish
-farm/evidence/**
-!farm/evidence/.gitkeep
-DOGFOOD.md
-RELEASE.md
-scripts/trust/
+farm/evidence/*.log
+# Keep evidence markdown in the private monorepo only — never sync to mattbaconz/plugtrace
+# Public export must exclude: DOGFOOD.md, RELEASE.md, farm/evidence/**, scripts/trust/**

@@ -4,7 +4,7 @@
 #>
 param(
     [string]$ServerJar = 'farm\jars\folia-1.21.11-14.jar',
-    [string]$Artifact = 'folia\build\libs\PlugTrace-folia-0.4.0.jar',
+    [string]$Artifact = 'folia\build\libs\PlugTrace-folia-0.5.1.jar',
     [int]$ObserveSeconds = 900
 )
 

@@ -1,11 +1,12 @@
-﻿name: PlugTrace
-version: '0.5.0'
+name: PlugTrace
+version: '0.5.1'
 main: dev.pluglabs.plugtrace.paper.PlugTracePlugin
 api-version: '1.21'
 folia-supported: true
 authors: [PlugLabs]
 description: Deployment safety for Minecraft servers (Folia private-alpha artifact).
 website: https://plugtrace.dev
+softdepend: [PlaceholderAPI, Vault, LuckPerms, spark, Spark, AutoUpdatePlugins]
 commands:
   plugtrace:
     description: PlugTrace deployment safety and forensics

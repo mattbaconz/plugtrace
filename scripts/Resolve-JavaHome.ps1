@@ -1,5 +1,5 @@
 # Resolves pinned JDK homes for PlugTrace ephemeral farm work.
-# Prefer JAVA_HOME when it matches, then scoop Temurin, then Eclipse Adoptium.
+# Prefer scoop Temurin pins, then Eclipse Adoptium Program Files.
 
 function Get-PlugTraceJavaHome {
     param(
@@ -8,35 +8,25 @@ function Get-PlugTraceJavaHome {
         [string]$Major
     )
 
-    $userProfile = $env:USERPROFILE
-    $scoopRoot = if ($env:SCOOP) { Join-Path $env:SCOOP 'apps' } else { Join-Path $userProfile 'scoop\apps' }
-
     $candidates = switch ($Major) {
         '17' {
             @(
-                (Join-Path $scoopRoot 'temurin17-jdk\current'),
+                'C:\Users\mattbaconz\scoop\apps\temurin17-jdk\current',
+                'C:\Program Files\Eclipse Adoptium\jdk-17.0.19+10-hotspot',
                 'C:\Program Files\Eclipse Adoptium\jdk-17'
             )
         }
         '21' {
             @(
-                (Join-Path $scoopRoot 'temurin21-jdk\current'),
-                'C:\Program Files\Eclipse Adoptium\jdk-21'
+                'C:\Program Files\Eclipse Adoptium\jdk-21.0.11.10-hotspot',
+                'C:\Users\mattbaconz\scoop\apps\temurin21-jdk\current'
             )
         }
         '25' {
             @(
-                (Join-Path $scoopRoot 'temurin25-jdk\current'),
-                (Join-Path $scoopRoot 'openjdk25\current'),
-                'C:\Program Files\Eclipse Adoptium\jdk-25'
+                'C:\Users\mattbaconz\scoop\apps\temurin25-jdk\current',
+                'C:\Users\mattbaconz\scoop\apps\openjdk25\current'
             )
-        }
-    }
-
-    if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME 'bin\java.exe'))) {
-        $ver = & (Join-Path $env:JAVA_HOME 'bin\java.exe') -version 2>&1 | Out-String
-        if ($ver -match "version `"$Major\.") {
-            return (Resolve-Path $env:JAVA_HOME).Path
         }
     }
 
@@ -47,9 +37,10 @@ function Get-PlugTraceJavaHome {
         }
     }
 
+    # Fallback: scan Adoptium / scoop for matching major
     $scanRoots = @(
         'C:\Program Files\Eclipse Adoptium',
-        $scoopRoot
+        'C:\Users\mattbaconz\scoop\apps'
     )
     foreach ($scan in $scanRoots) {
         if (-not (Test-Path $scan)) { continue }

@@ -354,9 +354,13 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
 
     private boolean report(CommandSender sender, String[] args) {
         if (args.length >= 2 && args[1].equalsIgnoreCase("preview")) {
-            sender.sendMessage("Preview sections: executiveSummary, deployment, baseline, changes, issues, suspects, annotations, spark, redactionWarnings");
+            sender.sendMessage("Support report preview (share like a spark link when needed):");
+            sender.sendMessage("Sections: executiveSummary, deployment, baseline, changes, issues, suspects, annotations, spark, redactionWarnings");
             sender.sendMessage("Nothing uploaded. Hash-only configs. Secrets redacted in samples.");
-            sender.sendMessage("Hosted share requires explicit: /plugtrace report upload");
+            sender.sendMessage("Pasteable share (explicit only): /plugtrace report upload → plugtrace.dev URL with #k=…");
+            if (service.sparkDetected()) {
+                sender.sendMessage("Lag? Attach spark too: /plugtrace spark link <profile-url>");
+            }
             return true;
         }
         if (args.length >= 2 && args[1].equalsIgnoreCase("upload")) {
@@ -382,6 +386,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("Preview: " + String.join(", ", artifacts.previewSections()));
         sender.sendMessage("Files: plugins/PlugTrace/reports/deployment-"
                 + service.currentDeployment().localSequence() + ".{json,md,html,discord.txt,github.md}");
+        sender.sendMessage("Share like a spark link (optional): /plugtrace report upload");
         return true;
     }
 
@@ -396,6 +401,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         sender.sendMessage("Generating redacted report and uploading ciphertext (key stays in URL fragment)…");
+        sender.sendMessage("This is the spark-shaped share path — paste the full URL into Discord/GitHub.");
         ReportService.ReportArtifacts artifacts;
         try {
             artifacts = service.generateReport();
@@ -413,18 +419,22 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
                     cfg.cloudTtlDays
             );
             service.recordHostedReport(result.id(), result.shareUrl(), result.expiresAt(), result.deleteToken());
-            sender.sendMessage("Uploaded. Share URL (copy full link including #k=…):");
+            sender.sendMessage("Uploaded. Share URL (copy full link including #k=… — like a spark profile):");
             sender.sendMessage(result.shareUrl());
             if (result.expiresAt() != null) {
                 sender.sendMessage("Expires: " + result.expiresAt());
             }
+            if (service.sparkDetected()) {
+                sender.sendMessage("If this incident includes lag: attach spark via /plugtrace spark link <url> and mention both links.");
+            }
             sender.sendMessage("Delete token (keep private): " + result.deleteToken());
             sender.sendMessage("Privacy: https://plugtrace.dev/privacy");
+            return true;
         } catch (Exception e) {
-            sender.sendMessage("Upload failed (local report kept): " + e.getMessage());
+            sender.sendMessage("Hosted upload failed; local report files remain: " + e.getMessage());
             plugin.getLogger().warning("Hosted report upload failed: " + e.getMessage());
+            return true;
         }
-        return true;
     }
 
     private boolean mark(CommandSender sender, String[] args) {

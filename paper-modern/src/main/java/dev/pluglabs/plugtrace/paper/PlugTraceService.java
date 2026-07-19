@@ -15,6 +15,7 @@ import dev.pluglabs.plugtrace.domain.Annotation;
 import dev.pluglabs.plugtrace.domain.AttributionEngine;
 import dev.pluglabs.plugtrace.domain.BaselineSelector;
 import dev.pluglabs.plugtrace.domain.Change;
+import dev.pluglabs.plugtrace.domain.ChangeType;
 import dev.pluglabs.plugtrace.domain.ComponentSnapshot;
 import dev.pluglabs.plugtrace.domain.Deployment;
 import dev.pluglabs.plugtrace.domain.DeploymentHealth;
@@ -145,6 +146,9 @@ public final class PlugTraceService implements AutoCloseable {
     private RestoreService restoreService;
     private RestorePlan lastRestorePlan;
     private long lastSnapshotMillis;
+    private final java.util.concurrent.ConcurrentLinkedQueue<Long> syncTickNanos =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private volatile long lastSyncTickMicros;
     private volatile DeploymentVerification currentVerification;
     private volatile long startupReadyMillis = -1L;
     private final List<Double> msptSamples = new CopyOnWriteArrayList<>();
@@ -245,6 +249,11 @@ public final class PlugTraceService implements AutoCloseable {
 
         this.noiseRules = loadNoiseRules();
         detectSpark(pluginManager, server);
+        List<String> updaters = UpdaterCoexistence.detectNames(pluginManager);
+        String updaterSummary = UpdaterCoexistence.summary(updaters);
+        if (updaterSummary != null) {
+            logger.info(updaterSummary);
+        }
 
         this.nodeId = loadOrCreateNodeId(server);
         this.platformInfo = PlatformInfo.detect(
@@ -316,12 +325,13 @@ public final class PlugTraceService implements AutoCloseable {
         this.currentChanges = diffEngine.diff(baseline, currentDeployment);
         store.saveDeployment(currentDeployment);
         List<ComponentSnapshot> ownershipComponents = currentDeployment.components();
-        runStoreAsync(() -> ownershipIndex = StackOwnershipIndex.build(
-                ownershipComponents, WrapperRegistry.packaged()));
-
-        for (ComponentSnapshot component : currentDeployment.components()) {
-            jarRetention.retainIfPresent(component);
-        }
+        List<ComponentSnapshot> retainComponents = List.copyOf(ownershipComponents);
+        runStoreAsync(() -> {
+            ownershipIndex = StackOwnershipIndex.build(ownershipComponents, WrapperRegistry.packaged());
+            for (ComponentSnapshot component : retainComponents) {
+                jarRetention.retainIfPresent(component);
+            }
+        });
 
         runStoreAsync(() -> store.pruneDeployments(nodeId, retentionDeployments, currentDeployment.id()));
         recomputeSuspects();
@@ -335,15 +345,25 @@ public final class PlugTraceService implements AutoCloseable {
 
         logger.info("PlugTrace initialized (" + artifactId + ").");
         logger.info("Deployment #" + currentDeployment.localSequence() + " recorded.");
+        if (updaterSummary != null) {
+            annotate("ops", updaterSummary, "plugtrace", null);
+        }
         logger.info(baseline == null
                 ? "No previous healthy baseline exists yet."
                 : "Baseline: " + baselineDescription);
+        if (baseline == null) {
+            logger.info("Install-before-break: after the first HEALTHY window, run /plugtrace checkpoint and /plugtrace expected capture.");
+            logger.info("Ritual: after every risky restart, read /plugtrace status (HEALTHY / FAILING / DEGRADED).");
+        }
         logger.info("Core history is local; nothing has been uploaded.");
         logger.info("Platform: " + platformInfo.forkFamily() + " " + currentDeployment.minecraftVersion()
                 + " | Support tier: " + platformInfo.supportTier()
                 + " | Artifact: " + platformInfo.artifact()
                 + " | Spark: " + (sparkDetected ? sparkVersion : "absent")
                 + " | Scheduler: " + (scheduler == null ? "fallback" : (scheduler.isFolia() ? "folia-facade" : "bukkit-facade")));
+        if (sparkDetected) {
+            logger.info("spark detected (" + sparkVersion + "). Lag → spark; update regressions → PlugTrace. Attach a profile with /plugtrace spark link <url> when MSPT regresses.");
+        }
         if (plugDevIdentity != null) {
             logger.info("PlugDev identity: " + plugDevIdentity.projectName()
                     + " @" + plugDevIdentity.shortCommit()
@@ -475,6 +495,7 @@ public final class PlugTraceService implements AutoCloseable {
         checks.addAll(checkExpectedCommands());
         checks.addAll(checkExpectedWorlds());
         checks.addAll(checkExpectedServices());
+        checks.addAll(ProviderServiceChecks.run(server, server.getPluginManager(), logger));
         checks.addAll(checkDependencies());
         checks.add(checkStartupTimeRegression());
         checks.add(checkMsptRegression());
@@ -536,7 +557,72 @@ public final class PlugTraceService implements AutoCloseable {
                 store.saveIncident(incident);
             }
         }
+        announceVerificationOutcome(checks, observationComplete);
         return currentVerification;
+    }
+
+    /** Console ritual surface: PASS/FAIL + next actions (D-034 packaging). */
+    private void announceVerificationOutcome(List<CheckResult> checks, boolean observationComplete) {
+        DeploymentHealth health = currentVerification.health();
+        String window = observationComplete ? "observation complete" : "early check";
+        logger.info("Verification " + health.name() + " (deployment #" + currentDeployment.localSequence()
+                + ", " + window + "). Ritual: /plugtrace status");
+
+        if (health == DeploymentHealth.HEALTHY && observationComplete) {
+            boolean noCheckpoint = checkpoints(1).isEmpty();
+            if (noCheckpoint) {
+                logger.info("First HEALTHY window with no checkpoint — lock a baseline now:");
+                logger.info("  /plugtrace checkpoint first-healthy");
+                logger.info("  /plugtrace expected capture");
+                logger.info("  /plugtrace mark healthy");
+                logger.info("Install-before-break: without a checkpoint, PlugTrace cannot invent last night's healthy state.");
+            } else if (baseline == null) {
+                logger.info("HEALTHY — consider /plugtrace mark healthy so the next restart diffs against this deployment.");
+            }
+            return;
+        }
+
+        if (health != DeploymentHealth.FAILING && health != DeploymentHealth.DEGRADED) {
+            return;
+        }
+
+        logger.warning("--- PlugTrace " + health.name() + " ---");
+        checks.stream()
+                .filter(r -> r.status() == CheckStatus.FAIL || r.status() == CheckStatus.WARN)
+                .limit(8)
+                .forEach(r -> logger.warning("  [" + r.status() + "] " + r.checkId() + " — " + r.summary()));
+
+        List<Change> jarChanges = currentChanges == null ? List.of() : currentChanges.stream()
+                .filter(c -> c.type() == ChangeType.VERSION_CHANGED
+                        || c.type() == ChangeType.BINARY_CHANGED_SAME_VERSION
+                        || c.type() == ChangeType.COMPONENT_ADDED
+                        || c.type() == ChangeType.COMPONENT_REMOVED)
+                .sorted((a, b) -> Integer.compare(b.significance(), a.significance()))
+                .limit(5)
+                .toList();
+        if (!jarChanges.isEmpty()) {
+            logger.warning("Top changed JARs / versions:");
+            jarChanges.forEach(c -> logger.warning("  " + c.type() + " " + c.componentKey()
+                    + (c.explanation().isBlank() ? "" : " — " + c.explanation())));
+        } else {
+            logger.warning("No JAR/version deltas vs baseline (or no baseline yet).");
+        }
+
+        logger.warning("Smallest recovery next step: /plugtrace restore preview");
+        logger.warning("Share like a spark link (explicit): /plugtrace report upload");
+        logger.warning("Local preview: /plugtrace report preview");
+
+        boolean msptWarn = checks.stream().anyMatch(r ->
+                "mspt-regression".equals(r.checkId())
+                        && (r.status() == CheckStatus.WARN || r.status() == CheckStatus.FAIL));
+        if (msptWarn) {
+            if (sparkDetected) {
+                logger.warning("MSPT regression + spark present — capture a spark profile, then /plugtrace spark link <url> beside the PlugTrace report.");
+            } else {
+                logger.warning("MSPT regression — install/use spark for lag; PlugTrace owns what changed, not method profiles.");
+            }
+        }
+        logger.warning("--- end PlugTrace " + health.name() + " ---");
     }
 
     /** Headless/tests only. Bukkit command and lifecycle paths use the non-blocking method. */
@@ -653,12 +739,40 @@ public final class PlugTraceService implements AutoCloseable {
     }
 
     private void sampleMspt() {
+        // Keep the sync/region tick path tiny: schedule MSPT probe off-thread.
+        long started = System.nanoTime();
+        try {
+            runStoreAsync(this::sampleMsptAsync);
+        } finally {
+            long elapsed = System.nanoTime() - started;
+            lastSyncTickMicros = elapsed / 1_000L;
+            syncTickNanos.add(elapsed);
+            while (syncTickNanos.size() > 64) {
+                syncTickNanos.poll();
+            }
+        }
+    }
+
+    private void sampleMsptAsync() {
         ServerMsptProbe.sample(server).ifPresent(sample -> {
             msptSamples.add(sample);
             while (msptSamples.size() > 10) {
                 msptSamples.remove(0);
             }
         });
+    }
+
+    private double syncTickP95Micros() {
+        List<Long> samples = new ArrayList<>(syncTickNanos);
+        if (samples.isEmpty()) {
+            return 0.0;
+        }
+        samples.sort(Long::compareTo);
+        int index = Math.min(samples.size() - 1, (int) Math.ceil(samples.size() * 0.95) - 1);
+        if (index < 0) {
+            index = 0;
+        }
+        return samples.get(index) / 1_000.0;
     }
 
     private CheckResult checkMsptRegression() {
@@ -830,6 +944,30 @@ public final class PlugTraceService implements AutoCloseable {
 
     public String sparkVersion() {
         return sparkVersion;
+    }
+
+    public String currentHealthName() {
+        if (currentDeployment == null || currentDeployment.health() == null) {
+            return "UNKNOWN";
+        }
+        return currentDeployment.health().name();
+    }
+
+    public long currentDeploymentSequence() {
+        return currentDeployment == null ? 0L : currentDeployment.localSequence();
+    }
+
+    public String strongestSuspectLabel() {
+        if (currentSuspects == null || currentSuspects.isEmpty()) {
+            return "none";
+        }
+        Suspect top = currentSuspects.get(0);
+        return top.componentKey() + " [" + top.band() + "]";
+    }
+
+    /** Soft PlaceholderAPI registration — safe to call after SERVER_LOAD. */
+    public boolean registerPlaceholderApi(org.bukkit.plugin.java.JavaPlugin host) {
+        return PlaceholderApiHook.tryRegister(host, this, logger);
     }
 
     public String sparkProfileUrl() {
@@ -1028,6 +1166,8 @@ public final class PlugTraceService implements AutoCloseable {
         lines.add("queueDepth=" + queue.size());
         lines.add("droppedEvents=" + droppedEvents.get());
         lines.add("lastSnapshotMs=" + lastSnapshotMillis);
+        lines.add("lastSyncTickUs=" + lastSyncTickMicros);
+        lines.add("syncTickP95Us=" + String.format(Locale.ROOT, "%.3f", syncTickP95Micros()));
         lines.add("dbBytes=" + fileSizeOrZero(dataFolder.resolve("plugtrace.db")));
         lines.add("retainedJarBytes=" + jarRetention.estimateRetainedBytes());
         lines.add("jarRetention=" + (jarRetention.enabled() ? "enabled" : "disabled"));
@@ -1140,7 +1280,12 @@ public final class PlugTraceService implements AutoCloseable {
     }
 
     public List<String> resolveOwnership(String stackTrace, List<String> loggerHints) {
-        return ownershipIndex.resolve(stackTrace, loggerHints);
+        StackOwnershipIndex index = ownershipIndex;
+        if (index == StackOwnershipIndex.empty() && currentDeployment != null) {
+            index = StackOwnershipIndex.build(currentDeployment.components(), WrapperRegistry.packaged());
+            ownershipIndex = index;
+        }
+        return index.resolve(stackTrace, loggerHints);
     }
 
     private static String truncateSample(String stack) {

@@ -18,6 +18,8 @@ class RedactionFuzzTest {
                 "remote=10.20.30.40:25565",
                 "windows=C:\\Users\\matt\\server\\plugins",
                 "unix=/home/matt/server/plugins",
+                "aws_access_key_id=AKIAIOSFODNN7EXAMPLE",
+                "bare=AKIAIOSFODNN7EXAMPLE",
                 "control=hello\u0000world\u001b[31m"
         );
         RedactionService service = new RedactionService();
@@ -31,8 +33,10 @@ class RedactionFuzzTest {
         assertFalse(output.contains("10.20.30.40"));
         assertFalse(output.contains("C:\\Users\\matt"));
         assertFalse(output.contains("/home/matt"));
+        assertFalse(output.contains("AKIAIOSFODNN7EXAMPLE"));
         assertFalse(output.contains("\u0000"));
         assertFalse(output.contains("\u001b"));
         assertTrue(output.contains("<redacted>"));
+        assertTrue(output.contains("<aws-key>"));
     }
 }

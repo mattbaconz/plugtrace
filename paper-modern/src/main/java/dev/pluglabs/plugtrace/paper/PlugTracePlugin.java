@@ -121,7 +121,10 @@ public final class PlugTracePlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onServerLoad(ServerLoadEvent event) {
-        if (service != null) service.onServerReady();
+        if (service != null) {
+            service.onServerReady();
+            service.registerPlaceholderApi(this);
+        }
     }
 
     private String readArtifactId() {

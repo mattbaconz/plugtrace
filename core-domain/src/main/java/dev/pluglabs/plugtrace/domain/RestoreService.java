@@ -19,10 +19,33 @@ import java.util.UUID;
 public final class RestoreService {
     private final Path dataFolder;
     private final JarRetentionService retention;
+    private final BinaryIo binaryIo;
+
+    /** File operations used by stage/finalize — injectable for interrupt-safety tests. */
+    @FunctionalInterface
+    public interface BinaryIo {
+        void copy(Path source, Path target, java.nio.file.CopyOption... options) throws IOException;
+
+        default void move(Path source, Path target, java.nio.file.CopyOption... options) throws IOException {
+            Files.move(source, target, options);
+        }
+    }
+
+    private static final BinaryIo DEFAULT_IO = new BinaryIo() {
+        @Override
+        public void copy(Path source, Path target, java.nio.file.CopyOption... options) throws IOException {
+            Files.copy(source, target, options);
+        }
+    };
 
     public RestoreService(Path dataFolder, JarRetentionService retention) {
+        this(dataFolder, retention, DEFAULT_IO);
+    }
+
+    public RestoreService(Path dataFolder, JarRetentionService retention, BinaryIo binaryIo) {
         this.dataFolder = dataFolder;
         this.retention = retention;
+        this.binaryIo = binaryIo == null ? DEFAULT_IO : binaryIo;
     }
 
     /** Stage gate: operators must pass confirm / --confirm after reviewing preview warnings. */
@@ -134,9 +157,9 @@ public final class RestoreService {
             Path stagedPath = live.resolveSibling(live.getFileName().toString() + ".plugtrace-restore");
             Path backupPath = live.resolveSibling(live.getFileName().toString() + ".plugtrace-original");
             if (Files.isRegularFile(live) && !Files.exists(backupPath)) {
-                Files.copy(live, backupPath, StandardCopyOption.COPY_ATTRIBUTES);
+                binaryIo.copy(live, backupPath, StandardCopyOption.COPY_ATTRIBUTES);
             }
-            Files.copy(retained, stagedPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+            binaryIo.copy(retained, stagedPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
             staged.add(new RestorePlan.RestoreAction(
                     action.componentKey(),
                     action.kind(),
@@ -181,9 +204,9 @@ public final class RestoreService {
                 continue;
             }
             try {
-                Files.move(stagedPath, live, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                binaryIo.move(stagedPath, live, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException atomicFailed) {
-                Files.move(stagedPath, live, StandardCopyOption.REPLACE_EXISTING);
+                binaryIo.move(stagedPath, live, StandardCopyOption.REPLACE_EXISTING);
             }
         }
         RestorePlan applied = plan.withStatus(RestorePlan.Status.APPLIED);
@@ -205,9 +228,9 @@ public final class RestoreService {
             Files.deleteIfExists(staged);
             if (Files.isRegularFile(backup)) {
                 try {
-                    Files.move(backup, live, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    binaryIo.move(backup, live, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
                 } catch (IOException e) {
-                    Files.move(backup, live, StandardCopyOption.REPLACE_EXISTING);
+                    binaryIo.move(backup, live, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
         }

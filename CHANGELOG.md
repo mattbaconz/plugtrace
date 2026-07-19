@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.1 - 2026-07-19
+
+External dogfood point-release. Marketplace still frozen until soak day 7 + owner freeze lift (**D-035**: trackers continue after listing).
+
+### [added]
+- Soft integrations: PlaceholderAPI `%plugtrace_*%` when present; Vault economy/permissions + LuckPerms API soft verification checks; updater coexistence annotation (AutoUpdatePlugins and similar)
+- Wrapper-registry prefixes for FAWE, Multiverse, ViaVersion, Geyser/Floodgate, Skript, MythicMobs, GriefDefender, ChestSort
+- Reverse-proxy note for local web UI (`plugtrace-docs/WEB_REVERSE_PROXY.md`)
+- D-035 marketplace bar (soak + trust + freeze; 10×30 / 3-dev post-list)
+
+### [changed]
+- `PUBLISH_CHECKLIST.md` / `RELEASE.md` align with D-035 (SpigotMC included; trackers post-list)
+- Hosted purge: document HTTP cron + `wrangler.jsonc` cron reminder (OpenNext still needs HTTP purge job)
+
+### [fixed]
+- (none yet beyond 0.5.0 trust campaign follow-through)
+
 ## 0.5.0 - 2026-07-18
 
 External dogfood packaging. Marketplace listings stay frozen until seven-day soak, trust gates, and owner freeze lift.
@@ -8,18 +25,21 @@ External dogfood packaging. Marketplace listings stay frozen until seven-day soa
 - Fixture farm evidence PASS on Paper 1.21.4 for delayed-error, config-reset, missing-service, command-loss, wrapper-chain, developer-check, unsafe-migration, event-throw, missing-dependency, same-version-binary, and enable-fail
 - Hosted purge API `/api/v1/cron/purge` for expired ciphertext reports (privacy ADR Accepted)
 - Claim-mapped marketplace drafts from farm evidence (still unpublished)
+- First-HEALTHY console ritual (checkpoint + expected capture prompt) and FAILING/DEGRADED console surface (failed checks, JAR deltas, restore + report upload next steps)
+- Developer/host adoption kit (issue template, Discord paste, schema acceptance checklist, demo narrative)
 
 ### [changed]
 - Release status: early public / external dogfood at **0.5.0** (listings still frozen until soak day 7 + trust + owner freeze lift)
+- Concept packaging locked (D-034): after-update PASS/FAIL ritual; spark = lag, PlugTrace = what changed / what died; install-before-break
 - Pufferfish: probed unavailable → **do not claim** until farm PASS
 - Spigot 1.20.1 / 1.20.4 kept as Experimental dogfood (PASS boots; not Certified soak)
-- Hosted report defaults remain `https://plugtrace.dev/`
+- Hosted report defaults remain `https://plugtrace.dev/`; report preview/upload copy framed as spark-like share
 
 ### [fixed]
 - Feature catalog and marketplace drafts aligned to passing matrix rows only (no Pufferfish claim; Spigot Experimental only)
 - Public clone messaging synced to early public release language (private alpha wording scrubbed where it contradicted shipped 0.5 packaging)
 - Artifact tests pin `plugin.yml` version to **0.5.0**; Folia/Bukkit `processResources` and paper `sourcesJar`/`jar` depend on `:paper-modern:copyWebUi` so `clean matrixSmoke` packages the web UI reliably
-
+- Redaction: bare AWS access keys (`AKIA`/`ASIA`) and `aws_access_key_id` labels now scrubbed (live five-shape campaign PASS 2026-07-19)
 ## 0.4.0 — private alpha (unlisted)
 
 - Repositioned around checkpoint → verify → explain → report → recover.

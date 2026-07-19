@@ -2,13 +2,13 @@
 
 <img src="brand/plugtrace-logo.png" alt="PlugTrace" width="128" />
 
-# PlugTrace · v0.5.0
+# PlugTrace · v0.5.1
 
 ---
 
 **Know whether your Minecraft server update actually worked.**
 
-Local-first deployment safety and forensics: checkpoint -> verify -> explain -> report -> recover. Paper, Folia, and experimental Bukkit/Spigot artifacts. Complements [Spark](https://spark.lucko.me/) (soft-link evidence) - PlugTrace is not a profiler.
+After every risky restart: `/plugtrace status` — `HEALTHY` / `FAILING` / `DEGRADED`. Install **before** you break things (it cannot invent last night’s healthy baseline). Local-first checkpoint → verify → explain → report → recover. [Spark](https://spark.lucko.me/) answers *what is slow*; PlugTrace answers *what changed and what died* — not a profiler.
 
 **[Site](https://plugtrace.dev)** · [Discord](https://discord.gg/C4X3rThtAM) · [PlugDev](https://github.com/mattbaconz/plugdev)
 
@@ -25,15 +25,15 @@ Local-first deployment safety and forensics: checkpoint -> verify -> explain -> 
 
 ## Status
 
-**0.5.0 external dogfood** - installable for dogfood. Marketplace listings stay frozen until live soak, trust, and incident-review gates clear. Optional hosted report sharing is available on [plugtrace.dev](https://plugtrace.dev) after an explicit `/plugtrace report upload` - nothing uploads automatically.
+**0.5.1 external dogfood** - installable for dogfood. Marketplace listings stay frozen until live soak, trust, and incident-review gates clear ([`RELEASE.md`](RELEASE.md)). Optional hosted report sharing is available on [plugtrace.dev](https://plugtrace.dev) after an explicit `/plugtrace report upload` - nothing uploads automatically.
 
 ## Quick start
 
 1. Download the JAR for your server (`PlugTrace-*.jar` paper-modern, `PlugTrace-folia-*.jar`, or experimental `PlugTrace-bukkit-modern-*.jar`) from [Releases](https://github.com/mattbaconz/plugtrace/releases).
-2. Drop into `plugins/` and restart.
-3. `/plugtrace selfcheck` · `/plugtrace mark healthy`
-4. After a risky update: `/plugtrace diff` · `/plugtrace report preview` · `/plugtrace report`
-5. Local web UI (default): `http://127.0.0.1:9465` - create a token with `/plugtrace web token create â€¦`
+2. Drop into `plugins/` and restart **while the server is still healthy**.
+3. `/plugtrace selfcheck` · wait for `HEALTHY` · `/plugtrace checkpoint` · `/plugtrace expected capture` · `/plugtrace mark healthy`
+4. After a risky update / restart: `/plugtrace status` (PASS/FAIL ritual). On `FAILING`: `/plugtrace report upload` to share like a spark link (explicit only).
+5. Local web UI (default): `http://127.0.0.1:9465` — create a token with `/plugtrace web token create …`
 
 ## Test with PlugDev
 
@@ -55,14 +55,14 @@ integrations:
     artifact: auto
 ```
 
-## Hosted reports (optional)
+## Hosted reports (optional) — share like a spark link
 
 ```text
 /plugtrace report preview
 /plugtrace report upload
 ```
 
-Prints a share URL like `https://plugtrace.dev/r/{id}#k=â€¦` (ciphertext in the cloud; key in the fragment). Local JSON/Markdown/HTML always remain under `plugins/PlugTrace/reports/`. Privacy: [plugtrace.dev/privacy](https://plugtrace.dev/privacy).
+Prints a share URL like `https://plugtrace.dev/r/{id}#k=…` (ciphertext in the cloud; key in the fragment). Paste the full URL into Discord/GitHub the same way you paste a spark profile. Nothing uploads automatically. Local JSON/Markdown/HTML always remain under `plugins/PlugTrace/reports/`. Privacy: [plugtrace.dev/privacy](https://plugtrace.dev/privacy).
 
 ## Build
 

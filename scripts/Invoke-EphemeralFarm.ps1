@@ -56,6 +56,27 @@ foreach ($fx in $FixtureJars) {
     Copy-Item $fxPath $destFx
 }
 
+# Seed Paperclip/Mojang cache from farm/cache to avoid corrupt re-downloads between runs.
+# Copy only top-level entries; never recurse into a destination that already exists as a directory
+# (avoids libraries/libraries/... path explosion on Windows).
+$serverLeaf = [IO.Path]::GetFileNameWithoutExtension($ServerJar)
+$cacheRoot = Join-Path $root "farm\cache\$serverLeaf"
+if (Test-Path $cacheRoot) {
+    Get-ChildItem $cacheRoot -Force | ForEach-Object {
+        $dest = Join-Path $runRoot $_.Name
+        if (Test-Path $dest) { return }
+        if ($_.PSIsContainer) {
+            New-Item -ItemType Directory -Force -Path $dest | Out-Null
+            & robocopy $_.FullName $dest /E /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
+            if ($LASTEXITCODE -ge 8) {
+                Write-Warning "robocopy cache seed failed for $($_.Name) exit=$LASTEXITCODE"
+            }
+        } else {
+            Copy-Item $_.FullName $dest -Force
+        }
+    }
+}
+
 Set-Content -Path (Join-Path $runRoot 'eula.txt') -Value 'eula=true' -Encoding ASCII
 if ($Port -le 0) {
     $Port = 25000 + (Get-Random -Minimum 1 -Maximum 4000)
@@ -175,6 +196,17 @@ $ErrorActionPreference = $prevEap
 
 $hasFail = ($notes | Where-Object { $_ -like 'FAIL:*' }).Count -gt 0
 $pass = $booted -and $plugtraceEnabled -and -not $hasFail
+
+if ($pass) {
+    $cacheRoot = Join-Path $root "farm\cache\$serverLeaf"
+    New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
+    foreach ($name in @('cache', 'libraries', 'versions')) {
+        $src = Join-Path $runRoot $name
+        if (Test-Path $src) {
+            Copy-Item $src (Join-Path $cacheRoot $name) -Recurse -Force
+        }
+    }
+}
 
 $notesText = ($notes | ForEach-Object { '- ' + $_ }) -join "`n"
 

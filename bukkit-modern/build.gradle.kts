@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":platform-common"))
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.3")
     compileOnly("org.spigotmc:spigot-api:1.20.4-R0.1-SNAPSHOT")
+    compileOnly("me.clip:placeholderapi:2.11.6")
 }
 
 sourceSets {

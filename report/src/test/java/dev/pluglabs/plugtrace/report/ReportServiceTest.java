@@ -1,5 +1,6 @@
 package dev.pluglabs.plugtrace.report;
 
+import dev.pluglabs.plugtrace.domain.Annotation;
 import dev.pluglabs.plugtrace.domain.Change;
 import dev.pluglabs.plugtrace.domain.ChangeType;
 import dev.pluglabs.plugtrace.domain.ConfidenceBand;
@@ -80,7 +81,11 @@ class ReportServiceTest {
                         List.of(new Evidence("change", "supporting", "hash changed", 90)),
                         List.of()
                 )),
-                List.of(),
+                List.of(new Annotation(
+                        "a1", "d2", Instant.now(), "ops", "REDACTION_CAMPAIGN",
+                        "password=SuperSecret123! aws_access_key_id=AKIAIOSFODNN7EXAMPLE",
+                        null
+                )),
                 "No reliable baseline exists yet.",
                 Map.of("detected", false),
                 Map.of("type", "deployment"),
@@ -96,7 +101,12 @@ class ReportServiceTest {
         assertTrue(artifacts.markdown().contains("PlugTrace Report"));
         assertTrue(artifacts.html().contains("<!DOCTYPE html>"));
         assertTrue(artifacts.discord().length() <= 2000);
-        assertTrue(artifacts.github().contains("PlugTrace report"));
+        assertTrue(artifacts.discord().contains("Annotations:"));
+        assertTrue(artifacts.github().contains("### Annotations"));
+        assertTrue(artifacts.discord().contains("<redacted>") || artifacts.discord().contains("<aws-key>"));
+        assertTrue(artifacts.github().contains("<redacted>") || artifacts.github().contains("<aws-key>"));
+        assertTrue(!artifacts.discord().contains("SuperSecret123"));
+        assertTrue(!artifacts.github().contains("AKIAIOSFODNN7EXAMPLE"));
         assertTrue(artifacts.json().contains("<redacted>") || artifacts.markdown().contains("<redacted>"));
     }
 

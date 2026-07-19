@@ -111,7 +111,7 @@ public final class ReportService {
             String jsonText = mapper.writeValueAsString(json);
             String markdown = toMarkdown(request, executive);
             String html = htmlRenderer.render(request, executive, redaction);
-            String discord = discordFormatter.format(request, executive);
+            String discord = discordFormatter.format(request, executive, redaction);
             String github = githubFormatter.format(request, executive, redaction);
             String artifactHash = Sha256Hasher.hashString(jsonText);
             return new ReportArtifacts(jsonText, markdown, html, discord, github, artifactHash, SCHEMA_VERSION, request.previewSections());

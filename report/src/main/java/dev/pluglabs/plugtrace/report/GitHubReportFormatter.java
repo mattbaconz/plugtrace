@@ -40,6 +40,20 @@ public final class GitHubReportFormatter {
             md.append(suspect.rank()).append(". **").append(suspect.componentKey()).append("** — ")
                     .append(suspect.band()).append('\n');
         }
+        md.append("\n### Annotations\n\n");
+        if (request.annotations().isEmpty()) {
+            md.append("_None_\n");
+        } else {
+            for (var annotation : request.annotations()) {
+                md.append("- `").append(annotation.category()).append("` by ")
+                        .append(annotation.actor()).append(": ")
+                        .append(escapeMd(redaction.redact(annotation.text())));
+                if (annotation.link() != null && !annotation.link().isBlank()) {
+                    md.append(" — ").append(escapeMd(redaction.redact(annotation.link())));
+                }
+                md.append('\n');
+            }
+        }
         return md.toString();
     }
 
