@@ -229,7 +229,7 @@ public final class PlugTraceService implements AutoCloseable {
         if (scheduler != null) {
             scheduler.runAsync(task);
         } else {
-            // Tests / headless without Bukkit scheduler — run inline on a daemon thread.
+            // Tests / headless without Bukkit scheduler - run inline on a daemon thread.
             Thread t = new Thread(task, "plugtrace-worker-fallback");
             t.setDaemon(true);
             t.start();
@@ -343,31 +343,54 @@ public final class PlugTraceService implements AutoCloseable {
         }
         bindApi();
 
-        logger.info("PlugTrace initialized (" + artifactId + ").");
-        logger.info("Deployment #" + currentDeployment.localSequence() + " recorded.");
+        PlugTraceMessages.consoleRitual(logger,
+                "<gradient:#22d3ee:#2dd4bf><bold>initialized</bold></gradient> <dark_gray>-</dark_gray> <aqua>"
+                        + PlugTraceMessages.escape(artifactId) + "</aqua>");
+        PlugTraceMessages.consoleRitual(logger,
+                "<gray>Deployment</gray> <aqua>#" + currentDeployment.localSequence() + "</aqua> <gray>recorded.</gray>");
         if (updaterSummary != null) {
             annotate("ops", updaterSummary, "plugtrace", null);
         }
-        logger.info(baseline == null
-                ? "No previous healthy baseline exists yet."
-                : "Baseline: " + baselineDescription);
+        PlugTraceMessages.consoleRitual(logger, baseline == null
+                ? "<gold>!</gold> <gray>No previous healthy baseline exists yet.</gray>"
+                : "<gray>Baseline:</gray> <white>" + PlugTraceMessages.escape(baselineDescription) + "</white>");
         if (baseline == null) {
-            logger.info("Install-before-break: after the first HEALTHY window, run /plugtrace checkpoint and /plugtrace expected capture.");
-            logger.info("Ritual: after every risky restart, read /plugtrace status (HEALTHY / FAILING / DEGRADED).");
+            PlugTraceMessages.consoleRitual(logger,
+                    "<gray>Install-before-break: after first</gray> <green>+ HEALTHY</green> "
+                            + "<gray>→</gray> <aqua>/plugtrace checkpoint</aqua> "
+                            + "<gray>+</gray> <aqua>expected capture</aqua>");
+            PlugTraceMessages.consoleRitual(logger,
+                    "<gray>Ritual: after every risky restart, read</gray> <aqua>/plugtrace status</aqua>");
         }
-        logger.info("Core history is local; nothing has been uploaded.");
-        logger.info("Platform: " + platformInfo.forkFamily() + " " + currentDeployment.minecraftVersion()
-                + " | Support tier: " + platformInfo.supportTier()
-                + " | Artifact: " + platformInfo.artifact()
-                + " | Spark: " + (sparkDetected ? sparkVersion : "absent")
-                + " | Scheduler: " + (scheduler == null ? "fallback" : (scheduler.isFolia() ? "folia-facade" : "bukkit-facade")));
+        PlugTraceMessages.consoleRitual(logger,
+                "<gray>Core history is local; nothing has been uploaded.</gray>");
+        PlugTraceMessages.consoleRitual(logger,
+                "<gray>Platform</gray> <white>" + PlugTraceMessages.escape(platformInfo.forkFamily())
+                        + " " + PlugTraceMessages.escape(currentDeployment.minecraftVersion())
+                        + "</white> <dark_gray>|</dark_gray> <gray>"
+                        + PlugTraceMessages.escape(platformInfo.supportTier())
+                        + "</gray> <dark_gray>|</dark_gray> <aqua>"
+                        + PlugTraceMessages.escape(platformInfo.artifact())
+                        + "</aqua> <dark_gray>|</dark_gray> <gray>spark </gray>"
+                        + (sparkDetected
+                        ? "<green>" + PlugTraceMessages.escape(sparkVersion) + "</green>"
+                        : "<dark_gray>absent</dark_gray>")
+                        + " <dark_gray>|</dark_gray> <gray>"
+                        + (scheduler == null ? "fallback" : (scheduler.isFolia() ? "folia-facade" : "bukkit-facade"))
+                        + "</gray>");
         if (sparkDetected) {
-            logger.info("spark detected (" + sparkVersion + "). Lag → spark; update regressions → PlugTrace. Attach a profile with /plugtrace spark link <url> when MSPT regresses.");
+            PlugTraceMessages.consoleRitual(logger,
+                    "<green>+</green> <gray>spark detected - lag → spark; regressions → PlugTrace.</gray> "
+                            + "<aqua>/plugtrace spark link &lt;url&gt;</aqua>");
         }
         if (plugDevIdentity != null) {
-            logger.info("PlugDev identity: " + plugDevIdentity.projectName()
-                    + " @" + plugDevIdentity.shortCommit()
-                    + (plugDevIdentity.gitDirty() ? " (dirty)" : ""));
+            PlugTraceMessages.consoleRitual(logger,
+                    "<aqua>*</aqua> <gray>PlugDev</gray> <white>"
+                            + PlugTraceMessages.escape(plugDevIdentity.projectName())
+                            + "</white> <dark_gray>@</dark_gray><aqua>"
+                            + PlugTraceMessages.escape(plugDevIdentity.shortCommit())
+                            + "</aqua>"
+                            + (plugDevIdentity.gitDirty() ? " <gold>(dirty)</gold>" : ""));
         }
         checkPendingRestoreComplete();
     }
@@ -398,7 +421,14 @@ public final class PlugTraceService implements AutoCloseable {
         if (lastReleaseContinuityKey != null
                 && !lastReleaseContinuityKey.isBlank()
                 && !lastReleaseContinuityKey.equals(key)) {
-            annotate("ops", "PlugDev rebuild: " + identity.shortCommit(), "plugdev", null);
+            annotate("ops", "PlugDev rebuild: " + identity.shortCommit()
+                    + " — bootstrap/JVM/config churn may DEGRADE without meaning a production update failed",
+                    "plugdev", null);
+        } else if (lastReleaseContinuityKey == null || lastReleaseContinuityKey.isBlank()) {
+            annotate("ops", "PlugDev identity present (" + identity.projectName()
+                    + "). Author-loop churn (PlugDev-Bootstrap, JVM, configs) is known context — "
+                    + "see rules/noise-v1.json and /plugtrace status noise row.",
+                    "plugdev", null);
         }
         lastReleaseContinuityKey = key;
         try {
@@ -565,19 +595,27 @@ public final class PlugTraceService implements AutoCloseable {
     private void announceVerificationOutcome(List<CheckResult> checks, boolean observationComplete) {
         DeploymentHealth health = currentVerification.health();
         String window = observationComplete ? "observation complete" : "early check";
-        logger.info("Verification " + health.name() + " (deployment #" + currentDeployment.localSequence()
-                + ", " + window + "). Ritual: /plugtrace status");
+        PlugTraceMessages.consoleRitual(logger,
+                PlugTraceMessages.healthMini(health)
+                        + " <dark_gray>-</dark_gray> <gray>deployment</gray> <aqua>#"
+                        + currentDeployment.localSequence() + "</aqua> <dark_gray>("
+                        + PlugTraceMessages.escape(window) + ")</dark_gray> "
+                        + "<dark_gray>- ritual:</dark_gray> <white>/plugtrace status</white>");
 
         if (health == DeploymentHealth.HEALTHY && observationComplete) {
             boolean noCheckpoint = checkpoints(1).isEmpty();
             if (noCheckpoint) {
-                logger.info("First HEALTHY window with no checkpoint — lock a baseline now:");
-                logger.info("  /plugtrace checkpoint first-healthy");
-                logger.info("  /plugtrace expected capture");
-                logger.info("  /plugtrace mark healthy");
-                logger.info("Install-before-break: without a checkpoint, PlugTrace cannot invent last night's healthy state.");
+                PlugTraceMessages.consoleRitual(logger,
+                        "<green>+</green> <white>First HEALTHY window</white> <gray>- lock a baseline now:</gray>");
+                PlugTraceMessages.consoleRitual(logger, "<dark_gray>  </dark_gray><aqua>/plugtrace checkpoint first-healthy</aqua>");
+                PlugTraceMessages.consoleRitual(logger, "<dark_gray>  </dark_gray><aqua>/plugtrace expected capture</aqua>");
+                PlugTraceMessages.consoleRitual(logger, "<dark_gray>  </dark_gray><aqua>/plugtrace mark healthy</aqua>");
+                PlugTraceMessages.consoleRitual(logger,
+                        "<gray>Install-before-break: without a checkpoint, PlugTrace cannot invent last night's healthy state.</gray>");
             } else if (baseline == null) {
-                logger.info("HEALTHY — consider /plugtrace mark healthy so the next restart diffs against this deployment.");
+                PlugTraceMessages.consoleRitual(logger,
+                        "<green>+</green> <white>HEALTHY</white> <gray>- consider</gray> <aqua>/plugtrace mark healthy</aqua> "
+                                + "<gray>so the next restart diffs against this deployment.</gray>");
             }
             return;
         }
@@ -586,11 +624,17 @@ public final class PlugTraceService implements AutoCloseable {
             return;
         }
 
-        logger.warning("--- PlugTrace " + health.name() + " ---");
+        PlugTraceMessages.bannerOpen(PlugTraceMessages.console(), health);
         checks.stream()
                 .filter(r -> r.status() == CheckStatus.FAIL || r.status() == CheckStatus.WARN)
                 .limit(8)
-                .forEach(r -> logger.warning("  [" + r.status() + "] " + r.checkId() + " — " + r.summary()));
+                .forEach(r -> PlugTraceMessages.consoleRitualWarn(logger,
+                        (r.status() == CheckStatus.FAIL
+                                ? "<red>x</red> "
+                                : "<gold>!</gold> ")
+                                + "<white>" + PlugTraceMessages.escape(r.checkId()) + "</white> "
+                                + "<dark_gray>-</dark_gray> <gray>"
+                                + PlugTraceMessages.escape(r.summary()) + "</gray>"));
 
         List<Change> jarChanges = currentChanges == null ? List.of() : currentChanges.stream()
                 .filter(c -> c.type() == ChangeType.VERSION_CHANGED
@@ -601,28 +645,39 @@ public final class PlugTraceService implements AutoCloseable {
                 .limit(5)
                 .toList();
         if (!jarChanges.isEmpty()) {
-            logger.warning("Top changed JARs / versions:");
-            jarChanges.forEach(c -> logger.warning("  " + c.type() + " " + c.componentKey()
-                    + (c.explanation().isBlank() ? "" : " — " + c.explanation())));
+            PlugTraceMessages.consoleRitualWarn(logger,
+                    "<gradient:#22d3ee:#2dd4bf>Top changed JARs / versions</gradient>");
+            jarChanges.forEach(c -> PlugTraceMessages.consoleRitualWarn(logger,
+                    "<dark_gray>-</dark_gray> <aqua>" + PlugTraceMessages.escape(String.valueOf(c.type()))
+                            + "</aqua> <white>" + PlugTraceMessages.escape(c.componentKey()) + "</white>"
+                            + (c.explanation().isBlank() ? ""
+                            : " <dark_gray>-</dark_gray> <gray>"
+                            + PlugTraceMessages.escape(c.explanation()) + "</gray>")));
         } else {
-            logger.warning("No JAR/version deltas vs baseline (or no baseline yet).");
+            PlugTraceMessages.consoleRitualWarn(logger,
+                    "<gray>No JAR/version deltas vs baseline (or no baseline yet).</gray>");
         }
 
-        logger.warning("Smallest recovery next step: /plugtrace restore preview");
-        logger.warning("Share like a spark link (explicit): /plugtrace report upload");
-        logger.warning("Local preview: /plugtrace report preview");
+        PlugTraceMessages.consoleRitualWarn(logger,
+                "<white>Next:</white> <aqua>/plugtrace restore preview</aqua>");
+        PlugTraceMessages.consoleRitualWarn(logger,
+                "<white>Share:</white> <aqua>/plugtrace report upload</aqua> "
+                        + "<dark_gray>(or</dark_gray> <aqua>report preview</aqua><dark_gray>)</dark_gray>");
 
         boolean msptWarn = checks.stream().anyMatch(r ->
                 "mspt-regression".equals(r.checkId())
                         && (r.status() == CheckStatus.WARN || r.status() == CheckStatus.FAIL));
         if (msptWarn) {
             if (sparkDetected) {
-                logger.warning("MSPT regression + spark present — capture a spark profile, then /plugtrace spark link <url> beside the PlugTrace report.");
+                PlugTraceMessages.consoleRitualWarn(logger,
+                        "<gold>!</gold> <gray>MSPT + spark - capture a profile, then</gray> "
+                                + "<aqua>/plugtrace spark link &lt;url&gt;</aqua>");
             } else {
-                logger.warning("MSPT regression — install/use spark for lag; PlugTrace owns what changed, not method profiles.");
+                PlugTraceMessages.consoleRitualWarn(logger,
+                        "<gold>!</gold> <gray>MSPT regression - use spark for lag; PlugTrace owns what changed.</gray>");
             }
         }
-        logger.warning("--- end PlugTrace " + health.name() + " ---");
+        PlugTraceMessages.bannerClose(PlugTraceMessages.console(), health);
     }
 
     /** Headless/tests only. Bukkit command and lifecycle paths use the non-blocking method. */
@@ -868,10 +923,20 @@ public final class PlugTraceService implements AutoCloseable {
         Path rulesFile = dataFolder.resolve("rules").resolve("noise-v1.json");
         try {
             if (!Files.exists(rulesFile)) {
+                Files.createDirectories(rulesFile.getParent());
                 Files.writeString(rulesFile, """
                         {
                           "suppressedFingerprints": [],
-                          "suppressedMessageSubstrings": []
+                          "suppressedMessageSubstrings": [],
+                          "knownChurnComponents": [
+                            "PlugDev-Bootstrap",
+                            "plugdev-bootstrap",
+                            "PLUGIN:plugdev-bootstrap"
+                          ],
+                          "knownChurnMessageSubstrings": [
+                            "plugdev-bootstrap",
+                            "PlugDev-Bootstrap"
+                          ]
                         }
                         """);
             }
@@ -879,17 +944,131 @@ public final class PlugTraceService implements AutoCloseable {
             JsonNode root = mapper.readTree(Files.readString(rulesFile));
             List<String> fingerprints = new ArrayList<>();
             List<String> substrings = new ArrayList<>();
+            List<String> churnComponents = new ArrayList<>();
+            List<String> churnMessages = new ArrayList<>();
             if (root.has("suppressedFingerprints")) {
                 root.get("suppressedFingerprints").forEach(n -> fingerprints.add(n.asText()));
             }
             if (root.has("suppressedMessageSubstrings")) {
                 root.get("suppressedMessageSubstrings").forEach(n -> substrings.add(n.asText()));
             }
-            return NoiseRules.fromLists(fingerprints, substrings);
+            if (root.has("knownChurnComponents")) {
+                root.get("knownChurnComponents").forEach(n -> churnComponents.add(n.asText()));
+            }
+            if (root.has("knownChurnMessageSubstrings")) {
+                root.get("knownChurnMessageSubstrings").forEach(n -> churnMessages.add(n.asText()));
+            }
+            if (churnComponents.isEmpty() && churnMessages.isEmpty()
+                    && fingerprints.isEmpty() && substrings.isEmpty()) {
+                // Fresh empty file from older templates — still apply PlugDev context defaults.
+                NoiseRules defaults = NoiseRules.plugDevDefaults();
+                churnComponents.addAll(defaults.knownChurnComponents());
+                churnMessages.addAll(List.of("plugdev-bootstrap", "PlugDev-Bootstrap"));
+            }
+            return NoiseRules.fromLists(fingerprints, substrings, churnComponents, churnMessages);
         } catch (Exception e) {
             logger.warning("Failed to load noise rules: " + e.getMessage());
-            return NoiseRules.empty();
+            return NoiseRules.plugDevDefaults();
         }
+    }
+
+    /**
+     * Ritual-first status payload for console + local web: health, top changes,
+     * strongest suspect, known-churn context, and the next operator command.
+     */
+    public Map<String, Object> ritualStatus() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        DeploymentHealth health = currentDeployment.health();
+        out.put("health", health.name());
+        out.put("deploymentSequence", currentDeployment.localSequence());
+        out.put("deploymentId", currentDeployment.id());
+        out.put("baseline", baselineDescription);
+        List<Change> topChanges = currentChanges == null ? List.of() : currentChanges.stream()
+                .sorted((a, b) -> Integer.compare(b.significance(), a.significance()))
+                .limit(3)
+                .toList();
+        out.put("topChanges", topChanges.stream().map(c -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("type", c.type().name());
+            row.put("component", c.componentKey());
+            row.put("explanation", c.explanation());
+            row.put("significance", c.significance());
+            row.put("knownChurn", noiseRules.isKnownChurnChange(c));
+            return row;
+        }).toList());
+        out.put("changeCount", currentChanges == null ? 0 : currentChanges.size());
+        out.put("issueCount", issueBuffer.size());
+        if (currentSuspects.isEmpty()) {
+            out.put("strongestSuspect", null);
+        } else {
+            Suspect top = currentSuspects.get(0);
+            Map<String, Object> suspect = new LinkedHashMap<>();
+            suspect.put("component", top.componentKey());
+            suspect.put("band", top.band().name());
+            suspect.put("summary", top.changeSummary());
+            suspect.put("knownChurn", noiseRules.isKnownChurnComponent(top.componentKey())
+                    || noiseRules.isKnownChurnMessage(top.changeSummary()));
+            out.put("strongestSuspect", suspect);
+        }
+        long churnChanges = currentChanges == null ? 0 : currentChanges.stream()
+                .filter(noiseRules::isKnownChurnChange).count();
+        long churnIssues = issueBuffer.values().stream()
+                .filter(noiseRules::isKnownChurnIssue).count();
+        Map<String, Object> noise = new LinkedHashMap<>();
+        noise.put("knownChurnChangeCount", churnChanges);
+        noise.put("knownChurnIssueCount", churnIssues);
+        noise.put("plugDevPresent", plugDevIdentity != null);
+        noise.put("hint", churnChanges > 0 || churnIssues > 0 || plugDevIdentity != null
+                ? "PlugDev/runtime churn can DEGRADE without meaning a production update failed. Annotate context; suppress only fingerprints you trust."
+                : null);
+        out.put("noiseContext", noise);
+        out.put("nextCommand", suggestNextCommand(health));
+        out.put("nextCommands", suggestNextCommands(health));
+        if (currentVerification != null) {
+            out.put("verificationHealth", currentVerification.health().name());
+            out.put("verificationChecks", currentVerification.checks().size());
+        } else {
+            out.put("verificationHealth", null);
+            out.put("verificationChecks", 0);
+        }
+        return out;
+    }
+
+    public String suggestNextCommand(DeploymentHealth health) {
+        List<String> cmds = suggestNextCommands(health);
+        return cmds.isEmpty() ? "/plugtrace status" : cmds.get(0);
+    }
+
+    public List<String> suggestNextCommands(DeploymentHealth health) {
+        DeploymentHealth h = health == null ? DeploymentHealth.UNKNOWN : health;
+        return switch (h) {
+            case HEALTHY -> {
+                if (checkpoints(1).isEmpty()) {
+                    yield List.of(
+                            "/plugtrace checkpoint first-healthy",
+                            "/plugtrace expected capture",
+                            "/plugtrace mark healthy"
+                    );
+                }
+                if (baseline == null) {
+                    yield List.of("/plugtrace mark healthy", "/plugtrace report preview");
+                }
+                yield List.of("/plugtrace report preview", "/plugtrace checkpoint");
+            }
+            case FAILING, CRASHED -> List.of(
+                    "/plugtrace restore preview",
+                    "/plugtrace report upload",
+                    "/plugtrace suspect"
+            );
+            case DEGRADED -> List.of(
+                    "/plugtrace suspect",
+                    "/plugtrace diff",
+                    "/plugtrace report upload",
+                    "/plugtrace annotate ops <why this is expected or not>"
+            );
+            case UNKNOWN -> List.of("/plugtrace verify run", "/plugtrace status");
+            default -> List.of("/plugtrace verify status", "/plugtrace status");
+        };
     }
 
     public void enqueue(IssueEvent event) {
@@ -965,7 +1144,7 @@ public final class PlugTraceService implements AutoCloseable {
         return top.componentKey() + " [" + top.band() + "]";
     }
 
-    /** Soft PlaceholderAPI registration — safe to call after SERVER_LOAD. */
+    /** Soft PlaceholderAPI registration - safe to call after SERVER_LOAD. */
     public boolean registerPlaceholderApi(org.bukkit.plugin.java.JavaPlugin host) {
         return PlaceholderApiHook.tryRegister(host, this, logger);
     }
@@ -1386,7 +1565,7 @@ public final class PlugTraceService implements AutoCloseable {
             lastRestorePlan = restoreService.preview(currentDeployment, baseline);
         }
         if (!lastRestorePlan.warnings().isEmpty()) {
-            logger.warning("Restore warnings (" + lastRestorePlan.warnings().size() + ") — confirm acknowledges them:");
+            logger.warning("Restore warnings (" + lastRestorePlan.warnings().size() + ") - confirm acknowledges them:");
             for (String warning : lastRestorePlan.warnings()) {
                 logger.warning("  ! " + warning);
             }
@@ -1411,7 +1590,7 @@ public final class PlugTraceService implements AutoCloseable {
         }
         if (lastRestorePlan == null || (lastRestorePlan.status() != RestorePlan.Status.STAGED
                 && !hasStagedActionsOnDisk(lastRestorePlan))) {
-            throw new IllegalStateException("No staged restore — run /plugtrace restore stage confirm first");
+            throw new IllegalStateException("No staged restore - run /plugtrace restore stage confirm first");
         }
         RestoreJournalCodec.writePlan(dataFolder, lastRestorePlan.withStatus(RestorePlan.Status.STAGED), "FINALIZE_PENDING");
         throw new IllegalStateException(
@@ -1492,7 +1671,7 @@ public final class PlugTraceService implements AutoCloseable {
             planId = Files.readString(marker).trim();
         }
         if (planId == null || planId.isBlank()) {
-            throw new IllegalStateException("No pending restore to complete — run offline finalize first");
+            throw new IllegalStateException("No pending restore to complete - run offline finalize first");
         }
         List<String> tags = new ArrayList<>(currentDeployment.tags());
         if (!tags.contains("restored-from-baseline")) {
@@ -1501,7 +1680,7 @@ public final class PlugTraceService implements AutoCloseable {
         currentDeployment = currentDeployment.withTags(tags);
         store.saveDeployment(currentDeployment);
         annotate("ops", "Restore complete plan=" + planId
-                + " — review /plugtrace verify; mark healthy when stable", "console", null);
+                + " - review /plugtrace verify; mark healthy when stable", "console", null);
         Files.deleteIfExists(marker);
         if (lastRestorePlan != null) {
             lastRestorePlan = lastRestorePlan.withStatus(RestorePlan.Status.APPLIED);

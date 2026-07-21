@@ -1,4 +1,4 @@
-﻿package dev.pluglabs.plugtrace.folia;
+package dev.pluglabs.plugtrace.folia;
 
 import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
@@ -8,7 +8,7 @@ class FoliaArtifactTest {
     @Test void descriptorAndLocalWebArePackaged() throws Exception {
         String descriptor = resource("/plugin.yml");
         assertTrue(descriptor.contains("folia-supported: true"));
-        assertTrue(descriptor.contains("version: '0.5.1'"));
+        assertTrue(descriptor.contains("version: '1.0.0'"));
         assertTrue(resource("/web/index.html").contains("PlugTrace Web"));
     }
     private static String resource(String name) throws Exception {

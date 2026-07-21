@@ -75,7 +75,7 @@ public final class ReportService {
                 "Nothing is uploaded automatically."
         ));
 
-        Map<String, Object> executive = buildExecutiveSummary(request.suspects(), request.issues());
+        Map<String, Object> executive = buildExecutiveSummary(request);
         json.put("executiveSummary", executive);
 
         Deployment current = request.current();
@@ -120,11 +120,21 @@ public final class ReportService {
         }
     }
 
-    private Map<String, Object> buildExecutiveSummary(List<Suspect> suspects, List<Issue> issues) {
+    private Map<String, Object> buildExecutiveSummary(ReportRequest request) {
+        List<Suspect> suspects = request.suspects();
+        List<Issue> issues = request.issues();
         Map<String, Object> executive = new LinkedHashMap<>();
         long newIssues = issues.stream().filter(i -> i.status().name().equals("NEW")).count();
         executive.put("newIssueCount", newIssues);
         executive.put("issueCount", issues.size());
+        executive.put("changeCount", request.changes().size());
+        String health = request.current().health().name();
+        executive.put("status", health);
+        List<Change> topChanges = request.changes().stream()
+                .sorted((a, b) -> Integer.compare(b.significance(), a.significance()))
+                .limit(3)
+                .toList();
+        executive.put("topChanges", topChanges.stream().map(this::changeMap).toList());
         if (suspects.isEmpty()
                 || (suspects.size() == 1 && suspects.get(0).band() == ConfidenceBand.UNKNOWN
                 && "unknown".equalsIgnoreCase(suspects.get(0).componentKey()))) {
@@ -132,6 +142,8 @@ public final class ReportService {
             executive.put("band", ConfidenceBand.UNKNOWN.name());
             executive.put("evidence", List.of("Insufficient evidence to name a suspect."));
             executive.put("unknown", true);
+            executive.put("headline", health + " — insufficient evidence to name a suspect");
+            executive.put("nextCommand", nextCommandFor(health));
             return executive;
         }
         Suspect top = suspects.get(0);
@@ -139,6 +151,9 @@ public final class ReportService {
         executive.put("band", top.band().name());
         executive.put("summary", top.changeSummary());
         executive.put("unknown", false);
+        executive.put("headline", health + " — strongest suspect " + top.componentKey()
+                + " [" + top.band().name() + "]");
+        executive.put("nextCommand", nextCommandFor(health));
         List<String> bullets = new ArrayList<>();
         for (var evidence : top.supporting()) {
             if (bullets.size() >= 3) {
@@ -148,6 +163,15 @@ public final class ReportService {
         }
         executive.put("evidence", bullets);
         return executive;
+    }
+
+    private static String nextCommandFor(String health) {
+        return switch (health == null ? "UNKNOWN" : health) {
+            case "HEALTHY" -> "/plugtrace checkpoint";
+            case "FAILING", "CRASHED" -> "/plugtrace restore preview";
+            case "DEGRADED" -> "/plugtrace suspect";
+            default -> "/plugtrace verify run";
+        };
     }
 
     private Map<String, Object> changeMap(Change change) {

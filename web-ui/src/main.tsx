@@ -1,8 +1,23 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {BaseStyles, Box, Button, Flash, FormControl, Heading, Label, PageLayout, Text, TextInput, ThemeProvider} from '@primer/react'
-import {CheckCircleFillIcon, DiffIcon, DotFillIcon, HistoryIcon, IssueOpenedIcon, MilestoneIcon, PulseIcon, ShieldCheckIcon, SyncIcon} from '@primer/octicons-react'
+import {CheckCircleFillIcon, DiffIcon, DotFillIcon, HistoryIcon, IssueOpenedIcon, MilestoneIcon, ShieldCheckIcon, SyncIcon} from '@primer/octicons-react'
 import './styles.css'
+
+function healthSymbol(health: string) {
+  switch ((health || 'UNKNOWN').toUpperCase()) {
+    case 'HEALTHY': return '+'
+    case 'FAILING':
+    case 'CRASHED': return 'x'
+    case 'DEGRADED': return '!'
+    default: return '*'
+  }
+}
+
+function HealthPill({health}: {health: string}) {
+  const key = (health || 'UNKNOWN').toUpperCase()
+  return <span className={`health-pill ${key}`}><span aria-hidden>{healthSymbol(key)}</span>{key}</span>
+}
 
 type Tab = 'overview' | 'timeline' | 'deployments' | 'diff' | 'checkpoints' | 'checks' | 'issues' | 'incidents' | 'reports' | 'recovery' | 'settings'
 type AnyRecord = Record<string, any>
@@ -81,9 +96,9 @@ function App() {
     return () => window.clearInterval(id)
   }, [token, tab, load, refreshTab])
 
-  if (!token || !status) return <ThemeProvider><BaseStyles><main className="login">
+  if (!token || !status) return <ThemeProvider colorMode="night"><BaseStyles><main className="login">
     <Box className="login-card">
-      <ShieldCheckIcon size={32}/><h1>PlugTrace Web</h1>
+      <div className="login-brand"><span className="brand-mark" aria-hidden>*</span><span className="brand-name">PlugTrace</span></div>
       <Text as="p" sx={{color: 'fg.muted'}}>Paste a read or admin token created from the server console. Tokens stay in this browser tab.</Text>
       {error && <Flash variant="danger">{error}</Flash>}
       <FormControl><FormControl.Label>Bearer token</FormControl.Label><TextInput block type="password" value={draft} onChange={e => setDraft(e.target.value)} /></FormControl>
@@ -95,8 +110,8 @@ function App() {
   const deployment = status.deployment || {}
   const verification = status.verification || {}
   const health = deployment.health || 'UNKNOWN'
-  return <ThemeProvider><BaseStyles>
-    <header className="topbar"><div className="brand"><PulseIcon/><strong>PlugTrace</strong><Label variant="secondary">local</Label></div><Text sx={{color: 'fg.muted'}}>{deployment.serverImplementation || 'Minecraft server'}</Text></header>
+  return <ThemeProvider colorMode="night"><BaseStyles>
+    <header className="topbar"><div className="brand"><span className="brand-mark" aria-hidden>*</span><span className="brand-name">PlugTrace</span><span className="brand-pipe">|</span><Label variant="secondary">local</Label></div><Text sx={{color: 'fg.muted'}}>{deployment.serverImplementation || 'Minecraft server'}</Text></header>
     <PageLayout containerWidth="full"><PageLayout.Pane position="start" width="medium" divider="line"><nav className="nav" aria-label="PlugTrace">
       <div className="repo"><Text sx={{fontSize: 0, color: 'fg.muted'}}>SERVER</Text><strong>{deployment.nodeId || 'Current node'}</strong></div>
       {tabs.map(item => <button key={item.id} className={tab === item.id ? 'nav-item active' : 'nav-item'} onClick={() => setTab(item.id)}>{item.label}</button>)}
@@ -134,10 +149,25 @@ function App() {
 
 function Overview({status, health, onVerify}: {status: AnyRecord; health: string; onVerify: () => void}) {
   const verification = status.verification || {}
+  const ritual = status.ritual || {}
+  const topChanges: AnyRecord[] = Array.isArray(ritual.topChanges) ? ritual.topChanges : []
+  const suspect = ritual.strongestSuspect || null
+  const noise = ritual.noiseContext || {}
+  const nextCommands: string[] = Array.isArray(ritual.nextCommands) ? ritual.nextCommands : (ritual.nextCommand ? [ritual.nextCommand] : [])
   return <><div className="page-head"><div><Text sx={{color: 'fg.muted'}}>CURRENT DEPLOYMENT</Text><h1>Did this update work?</h1></div><Button leadingVisual={SyncIcon} onClick={onVerify}>Run verification</Button></div>
-    <section className="hero"><div><Label variant={health === 'HEALTHY' ? 'success' : health === 'FAILING' ? 'danger' : 'attention'}>{health}</Label><Heading as="h2">Deployment #{status.deployment?.localSequence}</Heading><Text as="p" sx={{color: 'fg.muted'}}>{status.baseline}</Text></div><CheckCircleFillIcon size={44}/></section>
-    <div className="metric-grid"><Metric title="Checks" value={verification.checks?.length ?? '—'} icon={<ShieldCheckIcon/>}/><Metric title="Changes" value={status.changes ?? 0} icon={<HistoryIcon/>}/><Metric title="Issues" value={status.issues ?? 0} icon={<IssueOpenedIcon/>}/><Metric title="Privacy" value="Local only" icon={<DotFillIcon/>}/></div>
-    <section className="panel"><Heading as="h2">Verification evidence</Heading>{verification.checks?.length ? verification.checks.map((check: AnyRecord) => <div className="check" key={check.checkId}><Label variant={check.status === 'PASS' ? 'success' : check.status === 'FAIL' ? 'danger' : 'attention'}>{check.status}</Label><div><strong>{check.displayName}</strong><Text as="p" sx={{color:'fg.muted', m:0}}>{check.summary}</Text></div></div>) : <Empty text="Verification begins 30 seconds after server ready, or run it now."/>}</section>
+    <section className="hero"><div><HealthPill health={health}/><Heading as="h2">Deployment <span className="mono">#{status.deployment?.localSequence}</span></Heading><Text as="p" sx={{color: 'fg.muted'}}>{status.baseline}</Text></div><CheckCircleFillIcon size={44}/></section>
+    <div className="metric-grid"><Metric title="Checks" value={verification.checks?.length ?? ritual.verificationChecks ?? '—'} icon={<ShieldCheckIcon/>}/><Metric title="Changes" value={status.changes ?? ritual.changeCount ?? 0} icon={<HistoryIcon/>}/><Metric title="Issues" value={status.issues ?? ritual.issueCount ?? 0} icon={<IssueOpenedIcon/>}/><Metric title="Privacy" value="Local only" icon={<DotFillIcon/>}/></div>
+    <section className="panel"><Heading as="h2">Ritual</Heading>
+      {suspect ? <Text as="p" sx={{m: 0}}><strong>Strongest suspect:</strong> {String(suspect.component)} <Label>{String(suspect.band)}</Label>{suspect.knownChurn ? <Label variant="attention">known churn</Label> : null}<Text as="span" sx={{display:'block', color:'fg.muted', mt:1}}>{String(suspect.summary || '')}</Text></Text> : <Text as="p" sx={{color:'fg.muted'}}>No ranked suspect yet.</Text>}
+      {topChanges.length > 0 && <Box sx={{mt: 3}}><Text sx={{fontSize: 0, color: 'fg.muted'}}>TOP CHANGES</Text>{topChanges.map((row, i) => (
+        <div className="check" key={String(row.component) + i}><Label>{String(row.type)}</Label><div><strong>{String(row.component)}</strong>{row.knownChurn ? <Label variant="attention">known churn</Label> : null}<Text as="p" sx={{color:'fg.muted', m:0}}>{String(row.explanation || '')}</Text></div></div>
+      ))}</Box>}
+      {(noise.knownChurnChangeCount > 0 || noise.knownChurnIssueCount > 0 || noise.plugDevPresent) && (
+        <Flash variant="warning" sx={{mt: 3}}>{String(noise.hint || 'Known PlugDev/runtime churn is present. Annotate context before treating DEGRADED as a production failure.')}</Flash>
+      )}
+      {nextCommands.length > 0 && <Box sx={{mt: 3}}><Text sx={{fontSize: 0, color: 'fg.muted'}}>NEXT</Text>{nextCommands.slice(0, 3).map(cmd => <Text as="p" key={cmd} className="mono" sx={{m: '0.25rem 0'}}>{cmd}</Text>)}</Box>}
+    </section>
+    <section className="panel"><Heading as="h2">Verification evidence</Heading>{verification.checks?.length ? verification.checks.map((check: AnyRecord) => <div className="check" key={check.checkId}><Label variant={check.status === 'PASS' ? 'success' : check.status === 'FAIL' ? 'danger' : 'attention'}>{check.status === 'PASS' ? '+' : check.status === 'FAIL' ? 'x' : '!'} {check.status}</Label><div><strong>{check.displayName}</strong><Text as="p" sx={{color:'fg.muted', m:0}}>{check.summary}</Text></div></div>) : <Empty text="Verification begins 30 seconds after server ready, or run it now."/>}</section>
   </>
 }
 
@@ -150,7 +180,7 @@ function TimelinePage({rows}: {rows: AnyRecord[]}) {
       <article key={row.id || row.localSequence} className="timeline-row">
         <MilestoneIcon/>
         <div>
-          <div className="row-title"><strong>#{row.localSequence} {row.health}</strong><Label>{row.startedAt || row.id}</Label></div>
+          <div className="row-title"><strong>#{row.localSequence} </strong><HealthPill health={row.health || 'UNKNOWN'}/><Label>{row.startedAt || row.id}</Label></div>
           <Text as="p" sx={{color:'fg.muted', m:0}}>{row.serverImplementation || row.minecraftVersion || 'Deployment record'}</Text>
         </div>
       </article>

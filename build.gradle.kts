@@ -6,7 +6,7 @@ plugins {
 
 allprojects {
     group = "dev.pluglabs.plugtrace"
-    version = "0.5.1"
+    version = "1.0.0"
 
     repositories {
         mavenCentral()
@@ -62,7 +62,7 @@ tasks.register("printArtifacts") {
             }
             val jars = libs.listFiles().orEmpty()
                 .filter { f -> f.isFile && f.name.endsWith(".jar") && !f.name.contains("-sources") && !f.name.contains("-javadoc") }
-                .filter { f -> f.name.contains("-0.5.1.jar") || f.name.endsWith("-0.5.1.jar") }
+                .filter { f -> f.name.contains("-1.0.0.jar") || f.name.endsWith("-1.0.0.jar") }
                 .sortedBy { f -> f.name }
             for (jar in jars) {
                 digest.reset()
@@ -100,9 +100,9 @@ tasks.register("matrixSmoke") {
         println("bukkit-modern | Bukkit       | Spigot 1.20.1+1.20.4/Java 17 live PASS; Experimental capability set")
         println("pufferfish                   | Unverified (no downloadable jar from farm probes)")
         println("legacy/proxy/modloader       | deferred")
-        println("Upgrade notes: DB schema v3, report 1.0.0, product 0.5.1")
+        println("Upgrade notes: DB schema v3, report 1.0.0, product 1.0.0")
         println("Web UI: bundled under paper-modern/src/main/resources/web (copied to folia/bukkit JARs)")
-        println("Release checklist: external dogfood 0.5.1; marketplace freeze until soak+D-035 freeze lift")
+        println("Release checklist: v1.0.0 product (spark-like viewer + ritual); marketplace still needs soak day 7 + freeze lift (prefer listing 0.5.1 first per D-035)")
         println("OK - claims must match ARTIFACTS.md and /plugtrace compatibility")
     }
 }

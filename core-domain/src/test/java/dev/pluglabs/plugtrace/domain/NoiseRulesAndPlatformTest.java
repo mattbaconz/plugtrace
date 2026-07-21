@@ -28,4 +28,24 @@ class NoiseRulesAndPlatformTest {
         assertEquals("paper", PlatformInfo.detect("Paper", "git-Paper-123").forkFamily());
         assertTrue(PlatformInfo.detect("Paper", "git-Paper-123").supportTier().contains("Dogfood"));
     }
+
+    @Test
+    void knownChurnIsContextNotSuppress() {
+        Issue issue = new Issue(
+                "i2", "fp-other", "exception", "plugin disabled: plugdev-bootstrap",
+                List.of("lifecycle:PlugDev-Bootstrap"), Instant.now(), Instant.now(),
+                IssueStatus.ONGOING, "warning", 1, null, RegressionClass.NONE
+        );
+        NoiseRules rules = NoiseRules.plugDevDefaults();
+        assertTrue(rules.isKnownChurnIssue(issue));
+        assertTrue(!rules.isSuppressed(issue));
+        Change change = new Change(
+                ChangeType.CONFIG_HASH_CHANGED,
+                "PlugDev-Bootstrap:config.yml",
+                "a", "b",
+                "Config hash changed: config.yml",
+                5
+        );
+        assertTrue(rules.isKnownChurnChange(change));
+    }
 }

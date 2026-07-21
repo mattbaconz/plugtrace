@@ -147,6 +147,7 @@ final class LocalWebServer implements AutoCloseable {
         out.put("issues", service.currentIssues().size());
         out.put("verification", service.currentVerification());
         out.put("platform", service.platformInfo());
+        out.put("ritual", service.ritualStatus());
         out.put("localOnly", isLoopback(bind));
         out.put("web", Map.of(
                 "bind", bind,

@@ -1,38 +1,31 @@
-# PlugDev configuration — auto-generated
 type: plugin
 server: paper
-version: "1.21.4"
+version: 26.1.2
 port: 25565
-
 build:
   system: gradle
   task: build
   jarTask: jar
   module: paper-modern
-  jarPattern: "paper-modern/build/libs/*.jar"
-
+  jarPattern: paper-modern/build/libs/PlugTrace-1.0.0.jar
 client:
-  launcher: auto
+  launcher: prism
+  instance: FO 26.1.2
   offline: false
   offlineName: DevPlayer
-
+  joinOnReady: true
+  players: []
 jvm:
-  memory: 1G
-
-# Keep .plugdev/run between sessions (fast). Options: never | on-exit | worlds
+  memory: 2G
 run:
   cleanup: never
-
 dev:
   gamemode: creative
-  world: void
+  world: flat
   op: true
   peaceful: true
   onlineMode: false
-
-# PlugTrace has no runtime plugin dependencies. Keep compatibility boots isolated.
 deps: []
-
 watch:
   paths:
     - core-domain/src/

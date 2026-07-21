@@ -2,7 +2,7 @@
 
 <img src="brand/plugtrace-logo.png" alt="PlugTrace" width="128" />
 
-# PlugTrace · v0.5.1
+# PlugTrace · v1.0.0
 
 ---
 
@@ -25,7 +25,7 @@ After every risky restart: `/plugtrace status` — `HEALTHY` / `FAILING` / `DEGR
 
 ## Status
 
-**0.5.1 external dogfood** - installable for dogfood. Marketplace listings stay frozen until live soak, trust, and incident-review gates clear ([`RELEASE.md`](RELEASE.md)). Optional hosted report sharing is available on [plugtrace.dev](https://plugtrace.dev) after an explicit `/plugtrace report upload` - nothing uploads automatically.
+**1.0.0 deployment-safety** - ritual-first status + spark-like hosted report viewer. Marketplace listings stay frozen until soak day 7 + owner freeze lift ([`RELEASE.md`](RELEASE.md); prefer listing **0.5.1** first per D-035). Optional hosted report sharing on [plugtrace.dev](https://plugtrace.dev) after explicit `/plugtrace report upload` - nothing uploads automatically.
 
 ## Quick start
 
@@ -37,12 +37,16 @@ After every risky restart: `/plugtrace status` — `HEALTHY` / `FAILING` / `DEGR
 
 ## Test with PlugDev
 
+Full example ritual (you vs we, Prism 26.1.2, fixture break): [`examples/test-server/README.md`](examples/test-server/README.md).
+
 ```powershell
-npm i -g @plugdev/cli
+npm i -g @plugdev/cli@1.0.1
 cd plugtrace   # this repo
-plugdev init --setup
-.\gradlew.bat :paper-modern:shadowJar
-plug run
+$env:JAVA_HOME = (.\scripts\Resolve-JavaHome.ps1; Get-PlugTraceJavaHome 25)
+.\gradlew.bat :paper-modern:jar -x test
+npx plugdev setup --instance "FO 26.1.2"
+npx plugdev run
+# or one-shot farm smoke: .\examples\test-server\Invoke-ExampleRitual.ps1
 ```
 
 To co-install PlugTrace while developing another plugin, in that project's `plugdev.yml`:
@@ -51,7 +55,7 @@ To co-install PlugTrace while developing another plugin, in that project's `plug
 integrations:
   plugtrace:
     enabled: true
-    jar: path/to/PlugTrace-0.5.0.jar
+    jar: path/to/PlugTrace-0.5.1.jar
     artifact: auto
 ```
 

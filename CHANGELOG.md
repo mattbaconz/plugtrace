@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0 - 2026-07-21
+
+Deployment-safety v1 product tag: ritual-first surfaces + spark-like hosted report viewer. **Marketplace listing still frozen** until soak day 7 both targets + owner freeze lift (**D-035**). Prefer first public list as **0.5.1** JARs after soak; this tag marks the usefulness/viewer bar.
+
+### [added]
+- Ritual-first `/plugtrace status` and local web Overview: health, top changes, strongest suspect, known-churn context, next commands
+- Noise policy: `knownChurn*` in `rules/noise-v1.json` (context over silent suppress); docs `plugtrace-docs/NOISE_POLICY.md`; PlugDev auto-annotate context
+- Hosted report viewer rebuild on plugtrace.dev: identity strip, widgets, lenses (changes/suspects/checks/issues/timeline/env), deep-links (`?suspect=` / `?change=` / `?check=`), local JSON open
+- Report executive summary: `status`, `headline`, `topChanges`, `nextCommand`
+
+### [changed]
+- Product version **1.0.0**; report schema remains **1.0.0**
+
+### [fixed]
+- (none beyond 0.5.1 packaging)
+
 ## 0.5.1 - 2026-07-19
 
 External dogfood point-release. Marketplace still frozen until soak day 7 + owner freeze lift (**D-035**: trackers continue after listing).
@@ -38,7 +54,7 @@ External dogfood packaging. Marketplace listings stay frozen until seven-day soa
 ### [fixed]
 - Feature catalog and marketplace drafts aligned to passing matrix rows only (no Pufferfish claim; Spigot Experimental only)
 - Public clone messaging synced to early public release language (private alpha wording scrubbed where it contradicted shipped 0.5 packaging)
-- Artifact tests pin `plugin.yml` version to **0.5.0**; Folia/Bukkit `processResources` and paper `sourcesJar`/`jar` depend on `:paper-modern:copyWebUi` so `clean matrixSmoke` packages the web UI reliably
+- Artifact tests pin `plugin.yml` version to **0.5.1**; Folia/Bukkit `processResources` and paper `sourcesJar`/`jar` depend on `:paper-modern:copyWebUi` so `clean matrixSmoke` packages the web UI reliably
 - Redaction: bare AWS access keys (`AKIA`/`ASIA`) and `aws_access_key_id` labels now scrubbed (live five-shape campaign PASS 2026-07-19)
 ## 0.4.0 — private alpha (unlisted)
 
