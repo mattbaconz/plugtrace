@@ -1,8 +1,5 @@
 package dev.pluglabs.plugtrace.paper;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.annotation.JsonAutoDetect;
-import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import dev.pluglabs.plugtrace.domain.Checkpoint;
@@ -30,8 +27,6 @@ final class LocalWebServer implements AutoCloseable {
     private final int port;
     private final boolean allowRemote;
     private final WebTokenStore tokens;
-    private final ObjectMapper mapper = new ObjectMapper()
-            .setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
     private HttpServer server;
     private ExecutorService executor;
     private ScheduledExecutorService eventPublisher;
@@ -113,7 +108,7 @@ final class LocalWebServer implements AutoCloseable {
                 }
                 case "/verification" -> {
                     if (write) {
-                        service.requestVerification(false);
+                        service.requestVerification(true);
                         json(exchange, 202, Map.of("status", "started"));
                     }
                     else json(exchange, 200, service.currentVerification() == null ? Map.of() : service.currentVerification());
@@ -194,20 +189,20 @@ final class LocalWebServer implements AutoCloseable {
             exchange.close();
             return;
         }
-        events.publish("status", mapper.writeValueAsString(status()));
+        events.publish("status", WebJson.toJson(status()));
     }
 
     private void publishStatus() {
         if (events.subscriberCount() == 0 || service == null) return;
         try {
-            events.publish("status", mapper.writeValueAsString(status()));
+            events.publish("status", WebJson.toJson(status()));
         } catch (Exception e) {
             logger.fine("Unable to publish web status event: " + e.getMessage());
         }
     }
 
     private void json(HttpExchange exchange, int code, Object value) throws IOException {
-        byte[] bytes = mapper.writeValueAsBytes(value);
+        byte[] bytes = WebJson.toJsonBytes(value);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(code, bytes.length);
         exchange.getResponseBody().write(bytes);

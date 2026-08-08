@@ -11,9 +11,9 @@ public final class FoliaCertification {
     private FoliaCertification() {
     }
 
-    /** True when running artifact id is folia and Folia runtime is detected. */
+    /** True when the running jar is Folia-capable and Folia runtime is detected. */
     public static boolean claimsMatch(String artifactId, boolean foliaRuntime) {
-        return "folia".equals(artifactId) && foliaRuntime;
+        return foliaRuntime && ("folia".equals(artifactId) || "paper-modern".equals(artifactId));
     }
 
     /**

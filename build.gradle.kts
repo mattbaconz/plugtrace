@@ -6,7 +6,7 @@ plugins {
 
 allprojects {
     group = "dev.pluglabs.plugtrace"
-    version = "1.0.0"
+    version = "1.0.1"
 
     repositories {
         mavenCentral()
@@ -28,7 +28,18 @@ subprojects {
 
     tasks.withType<JavaCompile>().configureEach {
         options.encoding = "UTF-8"
-        val java17Modules = setOf("core-domain", "storage-sqlite", "report", "api", "platform-common", "bukkit-modern")
+        // Single release jar (paper-modern) is Java 17 so Spigot 1.20.x can load it;
+        // Paper/Folia still accept Java 17 plugin bytecode. Folia module stays aligned.
+        val java17Modules = setOf(
+            "core-domain",
+            "storage-sqlite",
+            "report",
+            "api",
+            "platform-common",
+            "paper-modern",
+            "folia",
+            "bukkit-modern",
+        )
         options.release.set(if (project.name in java17Modules) 17 else 21)
     }
 
@@ -62,7 +73,10 @@ tasks.register("printArtifacts") {
             }
             val jars = libs.listFiles().orEmpty()
                 .filter { f -> f.isFile && f.name.endsWith(".jar") && !f.name.contains("-sources") && !f.name.contains("-javadoc") }
-                .filter { f -> f.name.contains("-1.0.0.jar") || f.name.endsWith("-1.0.0.jar") }
+                .filter { f ->
+                    val ver = rootProject.version.toString()
+                    f.name.contains("-$ver.jar") || f.name.endsWith("-$ver.jar")
+                }
                 .sortedBy { f -> f.name }
             for (jar in jars) {
                 digest.reset()
@@ -100,9 +114,9 @@ tasks.register("matrixSmoke") {
         println("bukkit-modern | Bukkit       | Spigot 1.20.1+1.20.4/Java 17 live PASS; Experimental capability set")
         println("pufferfish                   | Unverified (no downloadable jar from farm probes)")
         println("legacy/proxy/modloader       | deferred")
-        println("Upgrade notes: DB schema v3, report 1.0.0, product 1.0.0")
+        println("Upgrade notes: DB schema v3, report 1.0.0, product 1.0.1")
         println("Web UI: bundled under paper-modern/src/main/resources/web (copied to folia/bukkit JARs)")
-        println("Release checklist: v1.0.0 product (spark-like viewer + ritual); marketplace still needs soak day 7 + freeze lift (prefer listing 0.5.1 first per D-035)")
+        println("Release checklist: v1.0.1 product (bStats + hot-path lightening); marketplace single jar")
         println("OK - claims must match ARTIFACTS.md and /plugtrace compatibility")
     }
 }

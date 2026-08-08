@@ -2,7 +2,7 @@
   "name": "plugtrace",
   "private": true,
   "devDependencies": {
-    "@plugdev/cli": "^0.12.6"
+    "@plugdev/cli": "^1.0.1"
   },
   "scripts": {
     "setup": "plugdev setup",

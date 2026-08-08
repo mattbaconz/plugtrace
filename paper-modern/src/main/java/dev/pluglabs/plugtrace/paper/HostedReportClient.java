@@ -26,7 +26,7 @@ import javax.crypto.spec.SecretKeySpec;
 final class HostedReportClient {
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_BITS = 128;
-    private static final int MAX_BODY_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_BODY_BYTES = 5 * 1024 * 1024;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private HostedReportClient() {
@@ -36,6 +36,7 @@ final class HostedReportClient {
             String id,
             String expiresAt,
             String deleteToken,
+            String claimToken,
             String shareUrl,
             String viewerPath
     ) {
@@ -100,6 +101,7 @@ final class HostedReportClient {
         String id = extractJsonString(response, "id");
         String expiresAt = extractJsonString(response, "expiresAt");
         String deleteToken = extractJsonString(response, "deleteToken");
+        String claimToken = extractJsonString(response, "claimToken");
         String viewerPath = extractJsonString(response, "viewerPath");
         if (id == null || id.isBlank()) {
             throw new IOException("Upload response missing id");
@@ -107,9 +109,35 @@ final class HostedReportClient {
         if (viewerPath == null || viewerPath.isBlank()) {
             viewerPath = "/r/" + id;
         }
+        if (claimToken == null) {
+            claimToken = "";
+        }
         String base = stripTrailingSlash(viewerUrl);
         String shareUrl = base + viewerPath + "#k=" + keyB64;
-        return new UploadResult(id, expiresAt, deleteToken, shareUrl, viewerPath);
+        return new UploadResult(id, expiresAt, deleteToken, claimToken, shareUrl, viewerPath);
+    }
+
+    /**
+     * For FAILING/DEGRADED, insert {@code ?lens=checks} before the fragment so the hosted
+     * viewer opens on the failed-checks lens (spark-style deep link into the finding).
+     */
+    static String withViewerDeepLink(String shareUrl, String healthName) {
+        if (shareUrl == null || shareUrl.isBlank()) {
+            return shareUrl;
+        }
+        String health = healthName == null ? "" : healthName.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"FAILING".equals(health) && !"DEGRADED".equals(health)) {
+            return shareUrl;
+        }
+        int hash = shareUrl.indexOf('#');
+        String path = hash >= 0 ? shareUrl.substring(0, hash) : shareUrl;
+        String fragment = hash >= 0 ? shareUrl.substring(hash) : "";
+        if (path.contains("lens=")) {
+            return shareUrl;
+        }
+        String sep = path.contains("?") ? "&" : "?";
+        String lens = "FAILING".equals(health) ? "checks" : "suspects";
+        return path + sep + "lens=" + lens + fragment;
     }
 
     private static byte[] gzip(byte[] input) throws IOException {

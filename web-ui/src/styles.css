@@ -110,8 +110,38 @@ body { margin: 0; background: var(--pt-bg); color: var(--pt-text) }
   justify-content: space-between;
   align-items: center;
 }
+.hero.ok {
+  border-color: rgba(52, 211, 153, 0.35);
+  background:
+    linear-gradient(135deg, rgba(52, 211, 153, 0.12), transparent 48%),
+    var(--pt-bg-elevated);
+}
+.hero.bad {
+  border-color: rgba(248, 113, 113, 0.4);
+  background:
+    linear-gradient(135deg, rgba(248, 113, 113, 0.14), transparent 48%),
+    var(--pt-bg-elevated);
+}
+.hero.warn {
+  border-color: rgba(251, 191, 36, 0.4);
+  background:
+    linear-gradient(135deg, rgba(251, 191, 36, 0.12), transparent 48%),
+    var(--pt-bg-elevated);
+}
 .hero h2 { font-size: 24px; margin: 14px 0 6px; font-variant-numeric: tabular-nums }
 .hero .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px }
+.hero-glyph.ok { color: var(--pt-healthy) }
+.hero-glyph.bad { color: var(--pt-failing) }
+.hero-glyph.warn { color: var(--pt-degraded) }
+.story-band h2, .share-band h2 { margin-top: 0 }
+.share-band {
+  border-color: rgba(34, 211, 238, 0.28);
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.06), transparent 70%), var(--pt-bg-elevated);
+}
+.share-band .mono, .content code.mono {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.92em;
+}
 
 .health-pill {
   display: inline-flex;

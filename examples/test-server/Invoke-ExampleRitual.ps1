@@ -76,7 +76,7 @@ if (-not (Test-Path $paperJar)) {
 }
 if (-not (Test-Path $paperJar)) { throw "Missing Paper jar: $paperJar" }
 
-$fixtureArgs = @()
+$fixtureJars = @()
 if ($WithDelayedErrorFixture) {
     Write-Host "Building delayed-error fixture..."
     & .\gradlew.bat :fixtures:delayed-error:jar -x test
@@ -85,7 +85,7 @@ if ($WithDelayedErrorFixture) {
         Where-Object { $_.Name -notmatch 'sources|javadoc' } |
         Select-Object -First 1
     if (-not $fixtureJar) { throw 'delayed-error fixture jar not found' }
-    $fixtureArgs = @('-FixtureJars', $fixtureJar.FullName)
+    $fixtureJars = @($fixtureJar.FullName)
     Write-Host "Using fixture: $($fixtureJar.FullName)"
 }
 
@@ -100,7 +100,7 @@ Write-Host "=== Example ritual ephemeral smoke ($runName) ==="
     -RunName $runName `
     -ObserveSeconds $ObserveSeconds `
     -Commands $commands `
-    @fixtureArgs
+    -FixtureJars $fixtureJars
 
 Write-Host ""
 Write-Host "Ephemeral smoke finished. For interactive play:"

@@ -3,29 +3,45 @@ package dev.pluglabs.plugtrace.paper;
 import dev.pluglabs.plugtrace.domain.DeploymentHealth;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.ansi.ColorLevel;
+import net.kyori.adventure.text.serializer.ansi.ANSIComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.entity.Player;
 
 import java.util.List;
 import java.util.Locale;
 import java.util.logging.Logger;
 
 /**
- * Premium MiniMessage console/chat style for PlugTrace.
- * Cyan→teal industrial brand. ASCII marks so Windows/PlugDev consoles don't show "?".
- * Shared by paper/folia/bukkit sources — Adventure Audience when available, plain fallback on Spigot.
+ * Premium MiniMessage style for PlugTrace.
+ * Players + true console: Adventure components (Paper -> ANSI).
+ * RCON / PlugDev: ANSI truecolor strings — PlugDev echoes {@code §x} hex as garbage.
  */
 public final class PlugTraceMessages {
     private static final MiniMessage MM = MiniMessage.miniMessage();
     private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
+    private static final ANSIComponentSerializer ANSI = ANSIComponentSerializer.builder()
+            .colorLevel(ColorLevel.TRUE_COLOR)
+            .build();
 
     /** Brand prefix: mark + PlugTrace + pipe (ASCII-safe for Windows consoles). */
     public static final String PREFIX =
             "<gradient:#22d3ee:#2dd4bf><bold>*</bold></gradient> "
                     + "<gradient:#e2e8f0:#94a3b8><bold>PlugTrace</bold></gradient> "
                     + "<dark_gray>|</dark_gray> ";
+
+    /** Clickable / suggestable next-action chip for compact ritual rows. */
+    public record ActionChip(String label, String command) {
+    }
 
     private PlugTraceMessages() {
     }
@@ -41,17 +57,140 @@ public final class PlugTraceMessages {
         return MM.deserialize(miniMessage);
     }
 
+    public static Component brandPrefix() {
+        return MM.deserialize(PREFIX);
+    }
+
     public static Component prefixed(String bodyMini) {
         return MM.deserialize(PREFIX + bodyMini);
     }
 
     public static void send(CommandSender sender, String bodyMini) {
-        Component component = prefixed(bodyMini);
-        if (sender instanceof Audience audience) {
-            audience.sendMessage(component);
-        } else {
-            sender.sendMessage(PLAIN.serialize(component));
+        sendComponent(sender, prefixed(bodyMini));
+    }
+
+    public static void sendComponent(CommandSender sender, Component fullMessage) {
+        // Players + true console: Adventure (Paper → ANSI in the log).
+        if (sender instanceof Player || sender instanceof ConsoleCommandSender) {
+            if (sender instanceof Audience audience) {
+                audience.sendMessage(fullMessage);
+                return;
+            }
         }
+        // RCON / PlugDev: emit ANSI ourselves. Audience→RCON uses §x legacy, which
+        // PlugDev prints as garbage; ANSI matches boot-line gradients in the TUI.
+        try {
+            sender.sendMessage(ANSI.serialize(fullMessage));
+        } catch (Throwable ignored) {
+            sender.sendMessage(PLAIN.serialize(fullMessage));
+        }
+    }
+
+    /** Body component after the brand prefix (Component API — safe for URLs with # / _). */
+    public static void sendBody(CommandSender sender, Component body) {
+        sendComponent(sender, brandPrefix().append(body));
+    }
+
+    /**
+     * Full share URL as an open_url link for players; plain aqua text for console.
+     * Hover mentions privacy; never put the delete token here.
+     */
+    public static void sendOpenUrl(CommandSender sender, String url) {
+        sendOpenUrl(sender, url, url, "Open report (includes #k=)");
+    }
+
+    /**
+     * Labeled open_url (e.g. "Open dashboard"). Console still prints the full URL.
+     */
+    public static void sendOpenUrl(
+            CommandSender sender, String url, String label, String hoverPlain) {
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        String display = label == null || label.isBlank() ? url : label;
+        boolean clickable = sender instanceof Player;
+        TextComponent.Builder link = Component.text()
+                .content(display)
+                .color(NamedTextColor.AQUA)
+                .decorate(TextDecoration.UNDERLINED);
+        if (clickable) {
+            link.clickEvent(ClickEvent.openUrl(url));
+            link.hoverEvent(HoverEvent.showText(Component.text(
+                    hoverPlain == null || hoverPlain.isBlank() ? url : hoverPlain,
+                    NamedTextColor.GRAY)));
+        } else {
+            // Console: show label + URL so operators can copy
+            if (!display.equals(url)) {
+                send(sender, "<aqua><underlined>" + escape(display) + "</underlined></aqua>"
+                        + " <dark_gray>·</dark_gray> <gray>" + escape(url) + "</gray>");
+                return;
+            }
+            link.hoverEvent(HoverEvent.showText(Component.text(
+                    "Copy URL", NamedTextColor.GRAY)));
+        }
+        sendBody(sender, link.build());
+    }
+
+    /** Delete token line — hover only, never open_url. */
+    public static void sendPrivateToken(CommandSender sender, String token) {
+        Component body = Component.text("Delete token (private): ", NamedTextColor.GRAY)
+                .append(Component.text(token == null ? "" : token, NamedTextColor.WHITE)
+                        .hoverEvent(HoverEvent.showText(Component.text(
+                                "Keep private — deletes the hosted report", NamedTextColor.GRAY))));
+        sendBody(sender, body);
+    }
+
+    /**
+     * Compact action row. Players get suggest_command chips (taste/help pattern);
+     * console / non-players get short aqua commands on one line.
+     */
+    public static void sendActionRow(CommandSender sender, List<ActionChip> chips) {
+        if (chips == null || chips.isEmpty()) {
+            return;
+        }
+        if (sender instanceof Player) {
+            TextComponent.Builder row = Component.text();
+            boolean first = true;
+            for (ActionChip chip : chips) {
+                if (!first) {
+                    row.append(Component.text(" ", NamedTextColor.DARK_GRAY));
+                }
+                first = false;
+                String cmd = normalizeCommand(chip.command());
+                row.append(Component.text("[" + chip.label() + "]", NamedTextColor.AQUA)
+                        .decorate(TextDecoration.UNDERLINED)
+                        .clickEvent(ClickEvent.suggestCommand(cmd))
+                        .hoverEvent(HoverEvent.showText(Component.text(cmd, NamedTextColor.GRAY))));
+            }
+            sendBody(sender, row.build());
+            return;
+        }
+        send(sender, formatConsoleActionRow(chips));
+    }
+
+    /** Console ritual equivalent of {@link #sendActionRow}. */
+    public static void consoleActionRow(Logger logger, List<ActionChip> chips) {
+        consoleRitualWarn(logger, formatConsoleActionRow(chips));
+    }
+
+    private static String formatConsoleActionRow(List<ActionChip> chips) {
+        StringBuilder mini = new StringBuilder();
+        boolean first = true;
+        for (ActionChip chip : chips) {
+            if (!first) {
+                mini.append(" <dark_gray>·</dark_gray> ");
+            }
+            first = false;
+            mini.append("<aqua>").append(escape(normalizeCommand(chip.command()))).append("</aqua>");
+        }
+        return mini.toString();
+    }
+
+    private static String normalizeCommand(String command) {
+        if (command == null || command.isBlank()) {
+            return "";
+        }
+        return command.startsWith("/") ? command : "/" + command;
     }
 
     /** Escape plain text and send as muted body under the brand prefix. */
@@ -111,18 +250,29 @@ public final class PlugTraceMessages {
         };
     }
 
-    /** Ritual section opener for console Audience (gradients in modern terminals). */
-    public static void bannerOpen(Audience audience, DeploymentHealth health) {
-        audience.sendMessage(prefixed(
-                "<gradient:#22d3ee:#2dd4bf><bold>==</bold></gradient> "
-                        + healthMini(health)
-                        + " <gradient:#22d3ee:#2dd4bf><bold>==</bold></gradient>"));
+    /** Ritual header: health + optional # + window. No == walls (mc-plugin-taste). */
+    public static void bannerOpen(Logger logger, DeploymentHealth health) {
+        bannerOpen(logger, health, -1, null);
     }
 
+    /** Header with deployment # and window label (e.g. early check). */
+    public static void bannerOpen(
+            Logger logger, DeploymentHealth health, long sequence, String window) {
+        StringBuilder body = new StringBuilder();
+        body.append(healthMini(health));
+        if (sequence >= 0) {
+            body.append("  <aqua>#").append(sequence).append("</aqua>");
+        }
+        if (window != null && !window.isBlank()) {
+            body.append("  <dark_gray>").append(escape(window)).append("</dark_gray>");
+        }
+        consoleRitualWarn(logger, body.toString());
+    }
+
+    /** @deprecated No-op — end banners removed for flat short ritual chat. */
+    @Deprecated
     public static void bannerClose(Audience audience, DeploymentHealth health) {
-        String name = health == null ? "UNKNOWN" : health.name();
-        audience.sendMessage(prefixed(
-                "<dark_gray>== end " + escape(name) + " ==</dark_gray>"));
+        // Intentionally empty (taste: no == end walls).
     }
 
     public static Audience console() {
@@ -134,7 +284,8 @@ public final class PlugTraceMessages {
     }
 
     /**
-     * Adventure console when available; JUL fallback when Spigot CommandSender is not an Audience.
+     * Boot / ritual lines: Adventure on the real console (ANSI gradients).
+     * JUL plain fallback when Adventure console is unavailable.
      */
     public static void consoleRitual(Logger logger, String bodyMini) {
         Audience audience = console();
@@ -163,5 +314,30 @@ public final class PlugTraceMessages {
                 consoleRitual(logger, body);
             }
         }
+    }
+
+    /** Short type mark for one-line JAR summaries. */
+    public static String jarTypeMark(String changeType) {
+        if (changeType == null) {
+            return "?";
+        }
+        return switch (changeType) {
+            case "COMPONENT_ADDED" -> "+";
+            case "COMPONENT_REMOVED" -> "-";
+            case "BINARY_CHANGED_SAME_VERSION" -> "BINARY";
+            case "VERSION_CHANGED" -> "VER";
+            default -> changeType.length() > 12 ? changeType.substring(0, 12) : changeType;
+        };
+    }
+
+    public static String shortComponentKey(String key) {
+        if (key == null) {
+            return "";
+        }
+        String k = key;
+        if (k.regionMatches(true, 0, "PLUGIN:", 0, 7)) {
+            k = k.substring(7);
+        }
+        return k;
     }
 }

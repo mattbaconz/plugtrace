@@ -3,9 +3,11 @@ package dev.pluglabs.plugtrace.paper;
 import dev.pluglabs.plugtrace.platform.CapabilityRegistry;
 import dev.pluglabs.plugtrace.platform.SchedulerFacade;
 import dev.pluglabs.plugtrace.platform.ShutdownSequence;
+import org.bstats.bukkit.Metrics;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.server.ServerLoadEvent;
 
 import java.io.BufferedReader;
@@ -21,6 +23,8 @@ public final class PlugTracePlugin extends JavaPlugin implements Listener {
     private SchedulerFacade scheduler;
     private LocalWebServer web;
     private PlugTraceCommand command;
+    @SuppressWarnings("unused")
+    private Metrics metrics;
 
     @Override
     public void onEnable() {
@@ -32,11 +36,15 @@ public final class PlugTracePlugin extends JavaPlugin implements Listener {
                 getServer().getVersion() + " " + getServer().getBukkitVersion()
         );
         CapabilityRegistry caps = CapabilityRegistry.forArtifact(artifactId);
-        getLogger().info("Capabilities: " + caps.all());
+        PlugTraceMessages.consoleRitual(getLogger(),
+                "<gray>Capabilities</gray> <dark_gray>-</dark_gray> <aqua>"
+                        + PlugTraceMessages.escape(String.valueOf(caps.all())) + "</aqua>");
         if (scheduler.isFolia() && caps.has(CapabilityRegistry.Capability.FOLIA_SCHEDULERS)) {
-            getLogger().info("Using Folia-safe scheduler facade (async worker for store I/O).");
+            PlugTraceMessages.consoleRitual(getLogger(),
+                    "<green>+</green> <gray>Using Folia-safe scheduler facade (async worker for store I/O).</gray>");
         } else if (scheduler.isFolia()) {
-            getLogger().warning("Folia runtime detected on non-folia artifact — prefer PlugTrace-folia.");
+            PlugTraceMessages.consoleRitualWarn(getLogger(),
+                    "<gold>!</gold> <gray>Folia runtime without Folia scheduler capability — use PlugTrace-1.0.0.jar</gray>");
         }
 
         service = new PlugTraceService(getLogger(), getDataFolder().toPath(), getConfig(), artifactId, scheduler);
@@ -44,6 +52,12 @@ public final class PlugTracePlugin extends JavaPlugin implements Listener {
         getServer().getPluginManager().registerEvents(this, this);
         capture = new ExceptionCapture(service, this);
         capture.register();
+
+        OperatorConfig metricsCfg = service.operatorConfig();
+        metrics = BStatsMetrics.startIfEnabled(this, service, metricsCfg != null && metricsCfg.metricsEnabled);
+        if (metrics == null) {
+            getLogger().fine("PlugTrace metrics disabled (metrics.enabled=false)");
+        }
 
         startWebFromConfig();
 
@@ -98,9 +112,14 @@ public final class PlugTracePlugin extends JavaPlugin implements Listener {
                 cfg.webBind, cfg.webPort, cfg.webAllowRemote);
         try {
             web.start();
-            getLogger().info("PlugTrace Web listening at " + web.address() + " (token required)");
+            PlugTraceMessages.consoleRitual(getLogger(),
+                    "<aqua>*</aqua> <gray>Web listening at</gray> <white>"
+                            + PlugTraceMessages.escape(web.address())
+                            + "</white> <dark_gray>(token required)</dark_gray>");
         } catch (Exception e) {
-            getLogger().warning("PlugTrace Web disabled: " + e.getMessage());
+            PlugTraceMessages.consoleRitualWarn(getLogger(),
+                    "<gold>!</gold> <gray>Web disabled:</gray> <white>"
+                            + PlugTraceMessages.escape(e.getMessage()) + "</white>");
             web = null;
         }
     }
@@ -116,7 +135,10 @@ public final class PlugTracePlugin extends JavaPlugin implements Listener {
         web = new LocalWebServer(service, getLogger(), getDataFolder().toPath(),
                 cfg.webBind, cfg.webPort, cfg.webAllowRemote);
         web.start();
-        getLogger().info("PlugTrace Web listening at " + web.address() + " (token required)");
+        PlugTraceMessages.consoleRitual(getLogger(),
+                "<aqua>*</aqua> <gray>Web listening at</gray> <white>"
+                        + PlugTraceMessages.escape(web.address())
+                        + "</white> <dark_gray>(token required)</dark_gray>");
     }
 
     @EventHandler
@@ -125,6 +147,18 @@ public final class PlugTracePlugin extends JavaPlugin implements Listener {
             service.onServerReady();
             service.registerPlaceholderApi(this);
         }
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        if (service == null || event.getPlayer() == null) {
+            return;
+        }
+        var player = event.getPlayer();
+        if (!player.hasPermission("plugtrace.view") && !player.hasPermission("plugtrace.admin") && !player.isOp()) {
+            return;
+        }
+        service.onOperatorJoin(player);
     }
 
     private String readArtifactId() {

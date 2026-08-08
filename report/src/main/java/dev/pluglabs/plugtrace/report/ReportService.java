@@ -1,8 +1,7 @@
 package dev.pluglabs.plugtrace.report;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import dev.pluglabs.plugtrace.domain.Annotation;
 import dev.pluglabs.plugtrace.domain.Change;
 import dev.pluglabs.plugtrace.domain.ConfidenceBand;
@@ -20,17 +19,14 @@ import java.util.Map;
 public final class ReportService {
     public static final String SCHEMA_VERSION = "1.0.0";
 
-    private final ObjectMapper mapper;
+    private final Gson gson;
     private final RedactionService redaction = new RedactionService();
     private final HtmlReportRenderer htmlRenderer = new HtmlReportRenderer();
     private final DiscordReportFormatter discordFormatter = new DiscordReportFormatter();
     private final GitHubReportFormatter githubFormatter = new GitHubReportFormatter();
 
     public ReportService() {
-        this.mapper = new ObjectMapper()
-                .registerModule(new JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-                .enable(SerializationFeature.INDENT_OUTPUT);
+        this.gson = new GsonBuilder().setPrettyPrinting().create();
     }
 
     public ReportArtifacts generate(
@@ -108,7 +104,7 @@ public final class ReportService {
         json.put("spark", request.spark());
 
         try {
-            String jsonText = mapper.writeValueAsString(json);
+            String jsonText = gson.toJson(json);
             String markdown = toMarkdown(request, executive);
             String html = htmlRenderer.render(request, executive, redaction);
             String discord = discordFormatter.format(request, executive, redaction);

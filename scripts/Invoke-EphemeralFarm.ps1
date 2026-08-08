@@ -203,7 +203,11 @@ if ($pass) {
     foreach ($name in @('cache', 'libraries', 'versions')) {
         $src = Join-Path $runRoot $name
         if (Test-Path $src) {
-            Copy-Item $src (Join-Path $cacheRoot $name) -Recurse -Force
+            try {
+                Copy-Item $src (Join-Path $cacheRoot $name) -Recurse -Force -ErrorAction Stop
+            } catch {
+                Write-Warning "Skipping farm cache copy for '${name}': $($_.Exception.Message)"
+            }
         }
     }
 }

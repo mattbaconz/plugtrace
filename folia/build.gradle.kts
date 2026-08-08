@@ -4,14 +4,23 @@ plugins {
 
 evaluationDependsOn(":paper-modern")
 
+repositories {
+    maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
+}
+
 dependencies {
     implementation(project(":core-domain"))
     implementation(project(":storage-sqlite"))
     implementation(project(":report"))
     implementation(project(":api"))
     implementation(project(":platform-common"))
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.3")
-    compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+    compileOnly("com.google.code.gson:gson:2.11.0")
+    compileOnly("org.spigotmc:spigot-api:1.20.4-R0.1-SNAPSHOT")
+    compileOnly("net.kyori:adventure-api:4.17.0")
+    compileOnly("net.kyori:adventure-text-minimessage:4.17.0")
+    compileOnly("net.kyori:adventure-text-serializer-plain:4.17.0")
+    compileOnly("net.kyori:adventure-text-serializer-ansi:4.17.0")
+    compileOnly("net.kyori:ansi:1.1.1")
     compileOnly("me.clip:placeholderapi:2.11.6")
 }
 

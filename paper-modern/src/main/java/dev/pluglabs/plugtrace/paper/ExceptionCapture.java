@@ -9,8 +9,6 @@ import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.event.server.PluginEnableEvent;
 import org.bukkit.plugin.Plugin;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.time.Instant;
 import java.util.List;
 import java.util.logging.Handler;
@@ -39,23 +37,17 @@ public final class ExceptionCapture implements Listener {
                     return;
                 }
                 Throwable thrown = record.getThrown();
-                StringWriter writer = new StringWriter();
-                thrown.printStackTrace(new PrintWriter(writer));
                 String loggerName = record.getLoggerName() == null ? "" : record.getLoggerName();
-                List<String> ownership = service.resolveOwnership(
-                        writer.toString(), ownershipFromLogger(loggerName));
-                service.enqueue(new IssueEvent(
-                        null,
+                String message = thrown.getMessage() == null ? record.getMessage() : thrown.getMessage();
+                // Logging thread: capture throwable + message only. Stack formatting happens on the worker.
+                service.enqueueDeferredException(
                         Instant.ofEpochMilli(record.getMillis()),
-                        service.currentDeployment().id(),
-                        "logger",
                         record.getLevel().getName().toLowerCase(),
-                        thrown.getClass().getName(),
-                        thrown.getMessage() == null ? record.getMessage() : thrown.getMessage(),
-                        writer.toString(),
-                        ownership,
+                        thrown,
+                        message,
+                        ownershipFromLogger(loggerName),
                         Thread.currentThread().getName()
-                ));
+                );
             }
 
             @Override

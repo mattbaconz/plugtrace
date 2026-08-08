@@ -1,14 +1,13 @@
 # Example test server (Paper 26.1.2 · Prism · PlugTrace 0.5.1)
 
-Interactive dogfood for **you**. Automated smoke for **us**. Marketplace still frozen until soak day 7 + freeze lift.
+Interactive dogfood for **you**. Automated smoke for **us**. Marketplace freeze lifted 2026-07-24 — prefer list **0.5.1** JARs (D-035).
 
 Pins: **PlugDev `@plugdev/cli@1.0.1`**, **Temurin 25**, Paper **`26.1.2`**, Prism instance **`FO 26.1.2`**, artifact `PlugTrace-0.5.1.jar`.
 
 ## What's next (product)
 
-1. Soak days 3–7 (automator / `Log-SoakDay.ps1` only — no invented ticks)
-2. Tick soak in `RELEASE.md`
-3. Owner freeze lift → Modrinth / Hangar / Spigot with v0.5.1 JARs
+1. Live Modrinth + Spigot upload (`PUBLISH_OPERATOR_PACKET.md` — needs `MODRINTH_TOKEN` / Spigot session)
+2. Post-list tracker outreach (`TRACKER_OUTREACH.md`)
 
 See [`DOGFOOD.md`](../../DOGFOOD.md) and [`farm/evidence/SOAK_STATUS.md`](../../farm/evidence/SOAK_STATUS.md).
 

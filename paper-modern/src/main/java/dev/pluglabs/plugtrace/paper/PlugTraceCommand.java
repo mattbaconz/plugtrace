@@ -62,10 +62,11 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             case "deployments" -> deployments(sender);
             case "diff" -> diff(sender);
             case "issues" -> issues(sender);
-            case "incidents" -> incidents(sender, args);
+            case "incidents", "incident" -> incidents(sender, args);
             case "suspect" -> suspect(sender, args);
             case "issue" -> issue(sender, args);
             case "report" -> report(sender, args);
+            case "share" -> reportUpload(sender);
             case "mark" -> mark(sender, args);
             case "annotate" -> annotate(sender, args);
             case "spark" -> spark(sender, args);
@@ -83,22 +84,31 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
 
     private boolean checkpoint(CommandSender sender, String[] args) {
         String name = args.length > 1 ? Arrays.stream(args).skip(1).collect(Collectors.joining(" ")) : "checkpoint";
-        final dev.pluglabs.plugtrace.domain.Checkpoint checkpoint;
+        final PlugTraceService.CheckpointResult result;
         try {
-            checkpoint = service.createCheckpoint(name, sender.getName());
+            result = service.createCheckpointResult(name, sender.getName());
         } catch (IllegalStateException exception) {
             out(sender, "Checkpoint not created: " + exception.getMessage());
             return true;
         }
-        out(sender, "Checkpoint " + checkpoint.id() + " references deployment #"
-                + service.currentDeployment().localSequence() + ". It is not a full backup.");
+        if (result.promotedFromUnknown()) {
+            out(sender, "Was UNKNOWN â€” marked HEALTHY so this checkpoint can lock.");
+        }
+        out(sender, "Checkpoint created for deployment #"
+                + service.currentDeployment().localSequence() + ".");
         return true;
     }
 
     private boolean verify(CommandSender sender, String[] args) {
         if (args.length > 1 && args[1].equalsIgnoreCase("run")) {
+            // Finalize observation so passing checks can become HEALTHY (early probes stay UNKNOWN).
+            service.requestVerification(true);
+            out(sender, "Final verification started. Use /plugtrace verify status for the result.");
+            return true;
+        }
+        if (args.length > 1 && args[1].equalsIgnoreCase("early")) {
             service.requestVerification(false);
-            out(sender, "Verification started. Use /plugtrace verify status for the result.");
+            out(sender, "Early verification started (passing checks stay UNKNOWN until /plugtrace verify run).");
             return true;
         }
         var result = service.currentVerification();
@@ -121,7 +131,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
                     .toList();
             List<String> services = liveServices();
             var state = service.captureExpectedState(plugins, commands, worlds, services);
-            out(sender, "Captured expected state " + state.id() + " from deployment #"
+            out(sender, "Captured expected state from deployment #"
                     + service.currentDeployment().localSequence() + ".");
             out(sender, "- plugins=" + plugins.size()
                     + " commands=" + commands.size()
@@ -138,11 +148,17 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /**
+     * Registered PluginCommands only. plugin.yml can declare commands that Essentials (and
+     * similar) never bind â€” capture must match {@code Server#getPluginCommand} used by verify.
+     */
     private List<String> livePluginCommands() {
-        return Arrays.stream(plugin.getServer().getPluginManager().getPlugins())
+        var server = plugin.getServer();
+        return Arrays.stream(server.getPluginManager().getPlugins())
                 .filter(org.bukkit.plugin.Plugin::isEnabled)
                 .flatMap(p -> p.getDescription().getCommands().keySet().stream())
                 .distinct()
+                .filter(name -> server.getPluginCommand(name) != null)
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .toList();
     }
@@ -155,7 +171,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean reload(CommandSender sender) {
-        out(sender, "Reloading PlugTrace config.yml…");
+        out(sender, "Reloading PlugTrace config.ymlâ€¦");
         for (String line : plugin.reloadOperatorConfig()) {
             out(sender, "- " + line);
         }
@@ -164,11 +180,22 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean incidents(CommandSender sender, String[] args) {
-        var incidents = service.currentIncidents();
         if (args.length > 1) {
-            var selected = incidents.stream().filter(incident -> incident.id().equalsIgnoreCase(args[1])).findFirst();
+            String action = args[1].toLowerCase(Locale.ROOT);
+            if (action.equals("ack") || action.equals("acknowledge")) {
+                String id = args.length > 2 ? args[2] : null;
+                out(sender, service.ackOpenIncident(id));
+                return true;
+            }
+            if (action.equals("ignore")) {
+                String id = args.length > 2 ? args[2] : null;
+                out(sender, service.ignoreOpenIncident(id));
+                return true;
+            }
+            var selected = service.currentIncidents().stream()
+                    .filter(incident -> incident.id().equalsIgnoreCase(args[1])).findFirst();
             if (selected.isEmpty()) {
-                out(sender, "Incident not found in the current deployment.");
+                out(sender, "Incident not found. Usage: /plugtrace incidents [ack|ignore|id]");
                 return true;
             }
             var incident = selected.get();
@@ -177,9 +204,11 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             out(sender, "Issue fingerprints: " + incident.issueFingerprints());
             return true;
         }
+        var incidents = service.currentIncidents();
         if (incidents.isEmpty()) out(sender, "No incidents for the current deployment.");
         incidents.forEach(incident -> out(sender, incident.status() + " " + incident.id() + " " + incident.summary()
                 + " checks=" + incident.failedCheckIds().size() + " issues=" + incident.issueFingerprints().size()));
+        out(sender, "Ack sticky nag: /plugtrace incidents ack [id] Â· ignore: /plugtrace incidents ignore [id]");
         return true;
     }
 
@@ -189,8 +218,8 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             out(sender, "PlugTrace Web: " + web.address() + " (token required)");
             return true;
         }
-        if (!(sender instanceof ConsoleCommandSender)) {
-            out(sender, "Web token management is console-only.");
+        if (sender instanceof org.bukkit.entity.Player) {
+            out(sender, "Web token management is console/RCON-only (not in-game).");
             return true;
         }
         try {
@@ -217,7 +246,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         return switch (sub) {
             case "checkpoint" -> "plugtrace.checkpoint";
             case "verify", "expected" -> "plugtrace.verify";
-            case "report" -> "plugtrace.report";
+            case "report", "share" -> "plugtrace.report";
             case "mark", "annotate" -> "plugtrace.mark";
             case "restore" -> "plugtrace.restore";
             case "web", "reload" -> "plugtrace.web.admin";
@@ -338,7 +367,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         }
         for (Issue issue : issues) {
             out(sender, issue.regressionClass() + "/" + issue.status()
-                    + " ×" + issue.occurrenceCount()
+                    + " Ã—" + issue.occurrenceCount()
                     + " fp=" + issue.fingerprint().substring(0, Math.min(8, issue.fingerprint().length()))
                     + " - " + issue.normalizedMessage());
         }
@@ -410,7 +439,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             out(sender, "Support report preview (share like a spark link when needed):");
             out(sender, "Sections: executiveSummary, deployment, baseline, changes, issues, suspects, annotations, spark, redactionWarnings");
             out(sender, "Nothing uploaded. Hash-only configs. Secrets redacted in samples.");
-            out(sender, "Pasteable share (explicit only): /plugtrace report upload → plugtrace.dev URL with #k=…");
+            out(sender, "Pasteable share (explicit only): /plugtrace share â†’ plugtrace.dev URL with #k=â€¦");
             if (service.sparkDetected()) {
                 out(sender, "Lag? Attach spark too: /plugtrace spark link <profile-url>");
             }
@@ -431,6 +460,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         } else if (args.length >= 2 && args[1].equalsIgnoreCase("github")) {
             artifacts = service.generateReport();
             kind = "github";
+            out(sender, artifacts.github());
         } else {
             artifacts = service.generateReport();
         }
@@ -439,7 +469,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         out(sender, "Preview: " + String.join(", ", artifacts.previewSections()));
         out(sender, "Files: plugins/PlugTrace/reports/deployment-"
                 + service.currentDeployment().localSequence() + ".{json,md,html,discord.txt,github.md}");
-        out(sender, "Share like a spark link (optional): /plugtrace report upload");
+        out(sender, "Share like a spark link (optional): /plugtrace share");
         return true;
     }
 
@@ -453,8 +483,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             out(sender, "Hosted upload requires plugtrace.admin (or console).");
             return true;
         }
-        out(sender, "Generating redacted report and uploading ciphertext (key stays in URL fragment)…");
-        out(sender, "This is the spark-shaped share path - paste the full URL into Discord/GitHub.");
+        out(sender, "Uploading redacted reportâ€¦");
         ReportService.ReportArtifacts artifacts;
         try {
             artifacts = service.generateReport();
@@ -462,7 +491,6 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             out(sender, "Local report generation failed; nothing uploaded: " + e.getMessage());
             return true;
         }
-        out(sender, "Local files written under plugins/PlugTrace/reports/ (upload is optional).");
         try {
             HostedReportClient.UploadResult result = HostedReportClient.upload(
                     cfg.cloudUploadUrl,
@@ -471,17 +499,18 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
                     artifacts.schemaVersion(),
                     cfg.cloudTtlDays
             );
-            service.recordHostedReport(result.id(), result.shareUrl(), result.expiresAt(), result.deleteToken());
-            out(sender, "Uploaded. Share URL (copy full link including #k=… - like a spark profile):");
-            out(sender, result.shareUrl());
+            String shareUrl = HostedReportClient.withViewerDeepLink(
+                    result.shareUrl(), service.currentHealthName());
+            service.recordHostedReport(result.id(), shareUrl, result.expiresAt(), result.deleteToken());
+            out(sender, "Share ready");
+            PlugTraceMessages.sendOpenUrl(sender, shareUrl);
             if (result.expiresAt() != null) {
-                out(sender, "Expires: " + result.expiresAt());
+                out(sender, "Expires " + result.expiresAt());
             }
+            PlugTraceMessages.sendPrivateToken(sender, result.deleteToken());
             if (service.sparkDetected()) {
-                out(sender, "If this incident includes lag: attach spark via /plugtrace spark link <url> and mention both links.");
+                out(sender, "Lag? Attach spark: /plugtrace spark link <url>");
             }
-            out(sender, "Delete token (keep private): " + result.deleteToken());
-            out(sender, "Privacy: https://plugtrace.dev/privacy");
             return true;
         } catch (Exception e) {
             out(sender, "Hosted upload failed; local report files remain: " + e.getMessage());
@@ -555,9 +584,9 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         if (platform.migrateHint() != null) {
             out(sender, "- Migrate: " + platform.migrateHint());
         } else if ("folia".equals(platform.forkFamily())) {
-            out(sender, "- Folia: correct artifact; live soak and certification are still pending");
+            out(sender, "- Folia: single PlugTrace jar (folia-supported); dogfood soak cleared");
         } else {
-            out(sender, "- Folia: use PlugTrace-folia when running Folia");
+            out(sender, "- One jar: Paper / Purpur / Folia / Spigot 1.20.x (see compatibility docs)");
         }
         return true;
     }
@@ -581,17 +610,17 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             return switch (action) {
                 case "preview" -> {
                     RestorePlan plan = service.restorePreview();
-                    out(sender, "Restore preview → baseline: " + service.baselineDescription());
+                    out(sender, "Restore preview â†’ baseline: " + service.baselineDescription());
                     out(sender, "- Actions: " + plan.actions().size() + "  status=" + plan.status());
                     for (RestorePlan.RestoreAction a : plan.actions()) {
                         out(sender, "  " + a.kind() + " " + a.componentKey()
-                                + " " + shortHash(a.fromHash()) + "→" + shortHash(a.toHash()));
+                                + " " + shortHash(a.fromHash()) + "â†’" + shortHash(a.toHash()));
                     }
                     for (String warning : plan.warnings()) {
                         out(sender, "! " + warning);
                     }
                     out(sender, "Risk: originals will be copied to *.plugtrace-original before replace.");
-                    out(sender, "Next: /plugtrace restore stage confirm  → stop → offline finalize → start → verify/complete");
+                    out(sender, "Next: /plugtrace restore stage confirm  â†’ stop â†’ offline finalize â†’ start â†’ verify/complete");
                     yield true;
                 }
                 case "stage" -> {
@@ -606,7 +635,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
                     out(sender, "2) Offline finalize (supported): java -jar core-domain-*.jar <plugins/PlugTrace> "
                             + plan.id());
                     out(sender, "   or: ./gradlew :core-domain:finalizeRestore -PplugtraceData=<plugins/PlugTrace>");
-                    out(sender, "3) Start → /plugtrace restore verify → /plugtrace restore complete");
+                    out(sender, "3) Start â†’ /plugtrace restore verify â†’ /plugtrace restore complete");
                     out(sender, "Abort anytime: /plugtrace restore abort");
                     yield true;
                 }
@@ -666,9 +695,12 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return filter(List.of(
                     "status", "deployments", "diff", "issues", "suspect", "issue",
-                    "checkpoint", "verify", "expected", "incidents", "report", "mark", "annotate",
+                    "checkpoint", "verify", "expected", "incidents", "incident", "report", "share", "mark", "annotate",
                     "spark", "compatibility", "selfcheck", "restore", "web", "reload"
             ), args[0]);
+        }
+        if (args.length == 2 && (args[0].equalsIgnoreCase("incidents") || args[0].equalsIgnoreCase("incident"))) {
+            return filter(List.of("ack", "ignore"), args[1]);
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("mark")) {
             return filter(List.of("healthy", "degraded", "broken"), args[1]);
@@ -685,7 +717,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("restore")) {
             return filter(List.of("preview", "stage", "finalize", "abort", "verify", "complete"), args[1]);
         }
-        if (args.length == 2 && args[0].equalsIgnoreCase("verify")) return filter(List.of("status", "run"), args[1]);
+        if (args.length == 2 && args[0].equalsIgnoreCase("verify")) return filter(List.of("status", "run", "early"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("expected")) return filter(List.of("show", "capture"), args[1]);
         if (args.length == 2 && args[0].equalsIgnoreCase("web")) return filter(List.of("status", "token"), args[1]);
         if (args.length == 3 && args[0].equalsIgnoreCase("web") && args[1].equalsIgnoreCase("token"))

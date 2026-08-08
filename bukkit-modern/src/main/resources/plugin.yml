@@ -1,9 +1,10 @@
 name: PlugTrace
-version: '1.0.0'
+version: '1.0.1'
 main: dev.pluglabs.plugtrace.paper.PlugTracePlugin
 api-version: '1.20'
+folia-supported: true
 authors: [PlugLabs]
-description: Deployment safety for Spigot 1.20.x servers (experimental Java 17 adapter).
+description: Deployment safety for Minecraft servers. Know whether your update actually worked.
 website: https://plugtrace.dev
 softdepend: [PlaceholderAPI, Vault, LuckPerms, spark, Spark, AutoUpdatePlugins]
 commands:

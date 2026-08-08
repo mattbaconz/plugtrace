@@ -22,6 +22,7 @@ public final class OperatorConfig {
     public final long initialDelaySeconds;
     public final long observationMinutes;
     public final String privacyMode;
+    public final boolean metricsEnabled;
     public final boolean webEnabled;
     public final String webBind;
     public final int webPort;
@@ -30,6 +31,10 @@ public final class OperatorConfig {
     public final String cloudUploadUrl;
     public final String cloudViewerUrl;
     public final int cloudTtlDays;
+    /** Empty = Discord webhook notify off (default). */
+    public final String notifyDiscordWebhookUrl;
+    public final boolean notifyOnFailing;
+    public final boolean notifyOnDegraded;
     public final List<String> warnings;
 
     private OperatorConfig(
@@ -41,6 +46,7 @@ public final class OperatorConfig {
             long initialDelaySeconds,
             long observationMinutes,
             String privacyMode,
+            boolean metricsEnabled,
             boolean webEnabled,
             String webBind,
             int webPort,
@@ -49,6 +55,9 @@ public final class OperatorConfig {
             String cloudUploadUrl,
             String cloudViewerUrl,
             int cloudTtlDays,
+            String notifyDiscordWebhookUrl,
+            boolean notifyOnFailing,
+            boolean notifyOnDegraded,
             List<String> warnings
     ) {
         this.retentionDeployments = retentionDeployments;
@@ -59,6 +68,7 @@ public final class OperatorConfig {
         this.initialDelaySeconds = initialDelaySeconds;
         this.observationMinutes = observationMinutes;
         this.privacyMode = privacyMode;
+        this.metricsEnabled = metricsEnabled;
         this.webEnabled = webEnabled;
         this.webBind = webBind;
         this.webPort = webPort;
@@ -67,6 +77,9 @@ public final class OperatorConfig {
         this.cloudUploadUrl = cloudUploadUrl;
         this.cloudViewerUrl = cloudViewerUrl;
         this.cloudTtlDays = cloudTtlDays;
+        this.notifyDiscordWebhookUrl = notifyDiscordWebhookUrl;
+        this.notifyOnFailing = notifyOnFailing;
+        this.notifyOnDegraded = notifyOnDegraded;
         this.warnings = List.copyOf(warnings);
     }
 
@@ -122,6 +135,8 @@ public final class OperatorConfig {
             privacy = PRIVACY_HASH_ONLY;
         }
 
+        boolean metricsEnabled = config.getBoolean("metrics.enabled", true);
+
         boolean webEnabled = config.getBoolean("web.enabled", true);
         String bind = config.getString("web.bind", "127.0.0.1");
         if (bind == null || bind.isBlank()) {
@@ -156,11 +171,24 @@ public final class OperatorConfig {
             ttlDays = 90;
         }
 
+        String webhook = config.getString("notify.discordWebhookUrl", "");
+        if (webhook == null) {
+            webhook = "";
+        }
+        webhook = webhook.trim();
+        if (!webhook.isEmpty() && !webhook.startsWith("https://")) {
+            warnings.add("notify.discordWebhookUrl ignored — must be https URL (or empty to disable)");
+            webhook = "";
+        }
+        boolean onFailing = config.getBoolean("notify.onFailing", true);
+        boolean onDegraded = config.getBoolean("notify.onDegraded", false);
+
         return new OperatorConfig(
                 deployments, rawSamples, jarEnabled, jarMaxMb, jarVersions,
-                initialDelay, observation, privacy,
+                initialDelay, observation, privacy, metricsEnabled,
                 webEnabled, bind, port, allowRemote,
-                cloudEnabled, uploadUrl.trim(), viewerUrl.trim(), ttlDays, warnings
+                cloudEnabled, uploadUrl.trim(), viewerUrl.trim(), ttlDays,
+                webhook, onFailing, onDegraded, warnings
         );
     }
 
@@ -174,6 +202,7 @@ public final class OperatorConfig {
         out.put("verification.initialDelaySeconds", initialDelaySeconds);
         out.put("verification.observationMinutes", observationMinutes);
         out.put("privacy.mode", privacyMode);
+        out.put("metrics.enabled", metricsEnabled);
         out.put("web.enabled", webEnabled);
         out.put("web.bind", webBind);
         out.put("web.port", webPort);
@@ -182,6 +211,10 @@ public final class OperatorConfig {
         out.put("cloud.uploadUrl", cloudUploadUrl);
         out.put("cloud.viewerUrl", cloudViewerUrl);
         out.put("cloud.ttlDays", cloudTtlDays);
+        out.put("notify.discordWebhookConfigured",
+                notifyDiscordWebhookUrl != null && !notifyDiscordWebhookUrl.isBlank());
+        out.put("notify.onFailing", notifyOnFailing);
+        out.put("notify.onDegraded", notifyOnDegraded);
         out.put("thresholds", Map.of(
                 "configResetStructuralAndBytes", "40%",
                 "msptMedianDeltaMs", 10,

@@ -12,6 +12,7 @@ Pinned-JDK ephemeral server farm for compatibility evidence. Marketplace claims 
 | `Invoke-FoliaObservation.ps1` | Single-plugin Folia 15-minute observation window |
 | `Log-SoakDay.ps1` | Append day row to `farm/evidence/soak-log.md` |
 | `trust/*` | Phase C campaign scaffolds (redaction / restore / HIGH / perf) |
+| `../examples/test-server/Invoke-ExampleRitual.ps1` | Paper 0.5.1 example smoke (+ optional delayed-error fixture) |
 
 ## Java pins
 

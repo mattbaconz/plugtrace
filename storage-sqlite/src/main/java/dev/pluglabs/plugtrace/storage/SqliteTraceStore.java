@@ -1,8 +1,5 @@
 package dev.pluglabs.plugtrace.storage;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import dev.pluglabs.plugtrace.domain.Annotation;
 import dev.pluglabs.plugtrace.domain.ComponentIdentity;
 import dev.pluglabs.plugtrace.domain.ComponentSnapshot;
@@ -44,7 +41,7 @@ import java.util.Optional;
 
 public final class SqliteTraceStore implements TraceStore {
     private final Connection connection;
-    private final ObjectMapper mapper;
+    private final JsonCodec json;
     private final Path databaseFile;
 
     public SqliteTraceStore(Path databaseFile) {
@@ -61,7 +58,7 @@ public final class SqliteTraceStore implements TraceStore {
                 }
             }
             this.connection = DriverManager.getConnection("jdbc:sqlite:" + databaseFile.toAbsolutePath());
-            this.mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+            this.json = new JsonCodec();
             try (Statement statement = connection.createStatement()) {
                 statement.execute("PRAGMA journal_mode=WAL");
                 statement.execute("PRAGMA foreign_keys=ON");
@@ -305,18 +302,18 @@ public final class SqliteTraceStore implements TraceStore {
             ps.setString(7, deployment.endedAt() == null ? null : deployment.endedAt().toString());
             ps.setString(8, deployment.startupReadyAt() == null ? null : deployment.startupReadyAt().toString());
             ps.setLong(9, deployment.startupReadyMillis());
-            ps.setString(10, mapper.writeValueAsString(deployment.crashReportReferences()));
+            ps.setString(10, json.toJson(deployment.crashReportReferences()));
             ps.setString(11, deployment.lifecycle().name());
             ps.setString(12, deployment.health().name());
-            ps.setString(13, mapper.writeValueAsString(deployment.healthReasons()));
+            ps.setString(13, json.toJson(deployment.healthReasons()));
             ps.setInt(14, deployment.complete() ? 1 : 0);
-            ps.setString(15, mapper.writeValueAsString(deployment.tags()));
+            ps.setString(15, json.toJson(deployment.tags()));
             ps.setString(16, deployment.serverImplementation());
             ps.setString(17, deployment.minecraftVersion());
             ps.setString(18, deployment.javaVersion());
             ps.setString(19, deployment.javaVendor());
-            ps.setString(20, mapper.writeValueAsString(deployment.components().stream().map(this::toComponentDto).toList()));
-            ps.setString(21, mapper.writeValueAsString(deployment.configs().stream().map(this::toConfigDto).toList()));
+            ps.setString(20, json.toJson(deployment.components().stream().map(this::toComponentDto).toList()));
+            ps.setString(21, json.toJson(deployment.configs().stream().map(this::toConfigDto).toList()));
             ps.setInt(22, deployment.schemaVersion());
             ps.executeUpdate();
         } catch (Exception e) {
@@ -393,7 +390,7 @@ public final class SqliteTraceStore implements TraceStore {
             ps.setString(3, issue.fingerprint());
             ps.setString(4, issue.normalizedType());
             ps.setString(5, issue.normalizedMessage());
-            ps.setString(6, mapper.writeValueAsString(issue.ownershipCandidates()));
+            ps.setString(6, json.toJson(issue.ownershipCandidates()));
             ps.setString(7, issue.firstSeenAt().toString());
             ps.setString(8, issue.lastSeenAt().toString());
             ps.setString(9, issue.status().name());
@@ -420,7 +417,7 @@ public final class SqliteTraceStore implements TraceStore {
                             rs.getString("fingerprint"),
                             rs.getString("normalized_type"),
                             rs.getString("normalized_message"),
-                            mapper.readValue(rs.getString("ownership_json"), new TypeReference<>() {}),
+                            json.list(rs.getString("ownership_json"), String.class),
                             Instant.parse(rs.getString("first_seen_at")),
                             Instant.parse(rs.getString("last_seen_at")),
                             IssueStatus.valueOf(rs.getString("status")),
@@ -652,7 +649,7 @@ public final class SqliteTraceStore implements TraceStore {
             ps.setString(2, verification.deploymentId());
             ps.setString(3, verification.verifiedAt().toString());
             ps.setString(4, verification.health().name());
-            ps.setString(5, mapper.writeValueAsString(verification.checks().stream().map(CheckResultDto::from).toList()));
+            ps.setString(5, json.toJson(verification.checks().stream().map(CheckResultDto::from).toList()));
             ps.setInt(6, verification.observationWindowComplete() ? 1 : 0);
             ps.setInt(7, verification.newSevereIssue() ? 1 : 0);
             ps.executeUpdate();
@@ -687,8 +684,8 @@ public final class SqliteTraceStore implements TraceStore {
             ps.setString(5, incident.resolvedAt() == null ? null : incident.resolvedAt().toString());
             ps.setString(6, incident.status().name());
             ps.setString(7, incident.summary());
-            ps.setString(8, mapper.writeValueAsString(incident.issueFingerprints()));
-            ps.setString(9, mapper.writeValueAsString(incident.failedCheckIds()));
+            ps.setString(8, json.toJson(incident.issueFingerprints()));
+            ps.setString(9, json.toJson(incident.failedCheckIds()));
             ps.executeUpdate();
         } catch (Exception e) {
             throw new IllegalStateException(e);
@@ -709,8 +706,8 @@ public final class SqliteTraceStore implements TraceStore {
                             rs.getString("id"), rs.getString("deployment_id"), rs.getString("verification_id"),
                             Instant.parse(rs.getString("opened_at")), resolved == null ? null : Instant.parse(resolved),
                             IncidentStatus.valueOf(rs.getString("status")), rs.getString("summary"),
-                            mapper.readValue(rs.getString("issue_fingerprints_json"), new TypeReference<>() {}),
-                            mapper.readValue(rs.getString("failed_checks_json"), new TypeReference<>() {})
+                            json.list(rs.getString("issue_fingerprints_json"), String.class),
+                            json.list(rs.getString("failed_checks_json"), String.class)
                     ));
                 }
                 return out;
@@ -730,9 +727,9 @@ public final class SqliteTraceStore implements TraceStore {
                 worlds_json=excluded.worlds_json,services_json=excluded.services_json
                 """)) {
             ps.setString(1, state.id()); ps.setString(2, state.nodeId()); ps.setString(3, state.sourceDeploymentId());
-            ps.setString(4, state.capturedAt().toString()); ps.setString(5, mapper.writeValueAsString(state.plugins()));
-            ps.setString(6, mapper.writeValueAsString(state.commands())); ps.setString(7, mapper.writeValueAsString(state.worlds()));
-            ps.setString(8, mapper.writeValueAsString(state.services())); ps.executeUpdate();
+            ps.setString(4, state.capturedAt().toString()); ps.setString(5, json.toJson(state.plugins()));
+            ps.setString(6, json.toJson(state.commands())); ps.setString(7, json.toJson(state.worlds()));
+            ps.setString(8, json.toJson(state.services())); ps.executeUpdate();
         } catch (Exception e) { throw new IllegalStateException(e); }
     }
 
@@ -744,10 +741,10 @@ public final class SqliteTraceStore implements TraceStore {
                 if (!rs.next()) return Optional.empty();
                 return Optional.of(new ExpectedState(rs.getString("id"), rs.getString("node_id"),
                         rs.getString("source_deployment_id"), Instant.parse(rs.getString("captured_at")),
-                        mapper.readValue(rs.getString("plugins_json"), new TypeReference<>() {}),
-                        mapper.readValue(rs.getString("commands_json"), new TypeReference<>() {}),
-                        mapper.readValue(rs.getString("worlds_json"), new TypeReference<>() {}),
-                        mapper.readValue(rs.getString("services_json"), new TypeReference<>() {})));
+                        json.list(rs.getString("plugins_json"), String.class),
+                        json.list(rs.getString("commands_json"), String.class),
+                        json.list(rs.getString("worlds_json"), String.class),
+                        json.list(rs.getString("services_json"), String.class)));
             }
         } catch (Exception e) { throw new IllegalStateException(e); }
     }
@@ -761,7 +758,7 @@ public final class SqliteTraceStore implements TraceStore {
             ps.setString(1, value.id()); ps.setString(2, value.deploymentId()); ps.setString(3, value.restorePlanId());
             ps.setString(4, value.verifiedAt().toString()); ps.setString(5, value.outcome().name());
             ps.setDouble(6, value.beforeIssueRate()); ps.setDouble(7, value.afterIssueRate());
-            ps.setString(8, mapper.writeValueAsString(value.changedChecks())); ps.setString(9, value.summary()); ps.executeUpdate();
+            ps.setString(8, json.toJson(value.changedChecks())); ps.setString(9, value.summary()); ps.executeUpdate();
         } catch (Exception e) { throw new IllegalStateException(e); }
     }
 
@@ -775,8 +772,7 @@ public final class SqliteTraceStore implements TraceStore {
                 while (rs.next()) out.add(new RecoveryVerification(rs.getString("id"), rs.getString("deployment_id"),
                         rs.getString("restore_plan_id"), Instant.parse(rs.getString("verified_at")),
                         RecoveryOutcome.valueOf(rs.getString("outcome")), rs.getDouble("before_issue_rate"),
-                        rs.getDouble("after_issue_rate"), mapper.readValue(rs.getString("changed_checks_json"),
-                        new TypeReference<>() {}), rs.getString("summary")));
+                        rs.getDouble("after_issue_rate"), json.list(rs.getString("changed_checks_json"), String.class), rs.getString("summary")));
                 return out;
             }
         } catch (Exception e) { throw new IllegalStateException(e); }
@@ -788,7 +784,7 @@ public final class SqliteTraceStore implements TraceStore {
     }
 
     private DeploymentVerification mapVerification(ResultSet rs) throws Exception {
-        List<CheckResultDto> checks = mapper.readValue(rs.getString("checks_json"), new TypeReference<>() {});
+        List<CheckResultDto> checks = json.list(rs.getString("checks_json"), CheckResultDto.class);
         return new DeploymentVerification(
                 rs.getString("id"), rs.getString("deployment_id"), Instant.parse(rs.getString("verified_at")),
                 DeploymentHealth.valueOf(rs.getString("health")), checks.stream().map(CheckResultDto::toDomain).toList(),
@@ -823,8 +819,8 @@ public final class SqliteTraceStore implements TraceStore {
     }
 
     private Deployment mapDeployment(ResultSet rs) throws Exception {
-        List<ComponentDto> componentDtos = mapper.readValue(rs.getString("components_json"), new TypeReference<>() {});
-        List<ConfigDto> configDtos = mapper.readValue(rs.getString("configs_json"), new TypeReference<>() {});
+        List<ComponentDto> componentDtos = json.list(rs.getString("components_json"), ComponentDto.class);
+        List<ConfigDto> configDtos = json.list(rs.getString("configs_json"), ConfigDto.class);
         String ended = rs.getString("ended_at");
         String ready = rs.getString("startup_ready_at");
         return Deployment.builder()
@@ -837,13 +833,12 @@ public final class SqliteTraceStore implements TraceStore {
                 .endedAt(ended == null ? null : Instant.parse(ended))
                 .startupReadyAt(ready == null ? null : Instant.parse(ready))
                 .startupReadyMillis(rs.getLong("startup_ready_ms"))
-                .crashReportReferences(mapper.readValue(
-                        rs.getString("crash_reports_json"), new TypeReference<List<String>>() {}))
+                .crashReportReferences(json.list(rs.getString("crash_reports_json"), String.class))
                 .lifecycle(DeploymentLifecycle.valueOf(rs.getString("lifecycle")))
                 .health(DeploymentHealth.valueOf(rs.getString("health")))
-                .healthReasons(mapper.readValue(rs.getString("health_reasons_json"), new TypeReference<>() {}))
+                .healthReasons(json.list(rs.getString("health_reasons_json"), String.class))
                 .complete(rs.getInt("complete") == 1)
-                .tags(mapper.readValue(rs.getString("tags_json"), new TypeReference<>() {}))
+                .tags(json.list(rs.getString("tags_json"), String.class))
                 .serverImplementation(rs.getString("server_implementation"))
                 .minecraftVersion(rs.getString("minecraft_version"))
                 .javaVersion(rs.getString("java_version"))

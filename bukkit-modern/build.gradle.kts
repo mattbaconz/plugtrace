@@ -14,12 +14,14 @@ dependencies {
     implementation(project(":report"))
     implementation(project(":api"))
     implementation(project(":platform-common"))
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.3")
+    compileOnly("com.google.code.gson:gson:2.11.0")
     compileOnly("org.spigotmc:spigot-api:1.20.4-R0.1-SNAPSHOT")
     // Adventure MiniMessage is paper-bundled; Spigot API alone does not expose it for shared paper sources.
     compileOnly("net.kyori:adventure-api:4.17.0")
     compileOnly("net.kyori:adventure-text-minimessage:4.17.0")
     compileOnly("net.kyori:adventure-text-serializer-plain:4.17.0")
+    compileOnly("net.kyori:adventure-text-serializer-ansi:4.17.0")
+    compileOnly("net.kyori:ansi:1.1.1")
     compileOnly("me.clip:placeholderapi:2.11.6")
 }
 

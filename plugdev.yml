@@ -7,7 +7,7 @@ build:
   task: build
   jarTask: jar
   module: paper-modern
-  jarPattern: paper-modern/build/libs/PlugTrace-1.0.0.jar
+  jarPattern: paper-modern/build/libs/PlugTrace-1.0.1.jar
 client:
   launcher: prism
   instance: FO 26.1.2
@@ -16,7 +16,7 @@ client:
   joinOnReady: true
   players: []
 jvm:
-  memory: 2G
+  memory: 4G
 run:
   cleanup: never
 dev:
@@ -25,7 +25,35 @@ dev:
   op: true
   peaceful: true
   onlineMode: false
-deps: []
+# Versions recorded 2026-07-25 demo smoke (Paper 26.1.2). Omit floating "latest" pins in docs;
+# PlugDev resolves from cache/presets when version is omitted.
+deps:
+  - name: luckperms
+    source: modrinth
+    slug: luckperms
+  - name: vault
+    source: hangar
+    author: TNE
+    slug: VaultUnlocked
+  - name: essentials
+    source: modrinth
+    slug: essentialsx
+  - name: placeholderapi
+    source: hangar
+    author: HelpChat
+    slug: PlaceholderAPI
+  - name: worldedit
+    source: hangar
+    author: EngineHub
+    slug: WorldEdit
+  - name: multiverse
+    source: hangar
+    author: Multiverse
+    slug: Multiverse-Core
+  - name: viaversion
+    source: hangar
+    author: ViaVersion
+    slug: ViaVersion
 watch:
   paths:
     - core-domain/src/

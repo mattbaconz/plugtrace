@@ -17,8 +17,9 @@ class FoliaCertificationTest {
     }
 
     @Test
-    void paperModernNeverClaimsFoliaSupport() {
-        assertFalse(FoliaCertification.claimsMatch("paper-modern", true));
+    void unifiedPaperModernClaimsFoliaWhenRuntimeDetected() {
+        assertTrue(FoliaCertification.claimsMatch("paper-modern", true));
+        assertFalse(FoliaCertification.claimsMatch("paper-modern", false));
         assertEquals("Dogfood verified (soak pending)", FoliaCertification.TIER_LABEL);
     }
 

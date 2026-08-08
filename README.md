@@ -2,7 +2,7 @@
 
 <img src="brand/plugtrace-logo.png" alt="PlugTrace" width="128" />
 
-# PlugTrace · v1.0.0
+# PlugTrace · v1.0.1
 
 ---
 
@@ -25,14 +25,14 @@ After every risky restart: `/plugtrace status` — `HEALTHY` / `FAILING` / `DEGR
 
 ## Status
 
-**1.0.0 deployment-safety** - ritual-first status + spark-like hosted report viewer. Marketplace listings stay frozen until soak day 7 + owner freeze lift ([`RELEASE.md`](RELEASE.md); prefer listing **0.5.1** first per D-035). Optional hosted report sharing on [plugtrace.dev](https://plugtrace.dev) after explicit `/plugtrace report upload` - nothing uploads automatically.
+**1.0.1 deployment-safety** - ritual-first status + spark-like hosted report viewer + optional anonymous [bStats](https://bstats.org/plugin/bukkit/PlugTrace/32755) (`metrics.enabled`, or global `plugins/bStats/config.yml`). Optional hosted report sharing on [plugtrace.dev](https://plugtrace.dev) after explicit `/plugtrace share` (alias of `report upload`) - nothing uploads automatically.
 
 ## Quick start
 
-1. Download the JAR for your server (`PlugTrace-*.jar` paper-modern, `PlugTrace-folia-*.jar`, or experimental `PlugTrace-bukkit-modern-*.jar`) from [Releases](https://github.com/mattbaconz/plugtrace/releases).
+1. Download **`PlugTrace-1.0.1.jar`** (one jar for Paper / Purpur / Folia / Spigot 1.20.x) from [Releases](https://github.com/mattbaconz/plugtrace/releases).
 2. Drop into `plugins/` and restart **while the server is still healthy**.
 3. `/plugtrace selfcheck` · wait for `HEALTHY` · `/plugtrace checkpoint` · `/plugtrace expected capture` · `/plugtrace mark healthy`
-4. After a risky update / restart: `/plugtrace status` (PASS/FAIL ritual). On `FAILING`: `/plugtrace report upload` to share like a spark link (explicit only).
+4. After a risky update / restart: `/plugtrace status` (PASS/FAIL ritual). On `FAILING`: `/plugtrace share` to open a deployment report on plugtrace.dev like a spark profile (explicit only; paste the full URL including `#k=…`).
 5. Local web UI (default): `http://127.0.0.1:9465` — create a token with `/plugtrace web token create …`
 
 ## Test with PlugDev
@@ -55,9 +55,11 @@ To co-install PlugTrace while developing another plugin, in that project's `plug
 integrations:
   plugtrace:
     enabled: true
-    jar: path/to/PlugTrace-0.5.1.jar
+    jar: path/to/PlugTrace-1.0.1.jar
     artifact: auto
 ```
+
+PlugDev identity/noise is ingested automatically when present. It does **not** replace `/plugtrace status` — use `examples/test-server/Invoke-DemoStatus.ps1` (or RCON) after `plug run` for the ritual surface.
 
 ## Hosted reports (optional) — share like a spark link
 
@@ -93,6 +95,7 @@ Defaults in `config.yml` (synced across artifacts). After edits: `/plugtrace rel
 | `privacy` | `hash-only` only in 0.5.0 |
 | `web` | Local UI bind/port; remote is opt-in |
 | `cloud` | Optional `uploadUrl` / `viewerUrl` for hosted reports |
+| `notify` | Opt-in Discord webhook on FAILING (redacted digest; empty URL = off) |
 
 ## License
 

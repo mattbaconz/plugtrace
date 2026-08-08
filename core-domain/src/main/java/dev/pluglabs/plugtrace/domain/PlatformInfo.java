@@ -47,14 +47,14 @@ public final class PlatformInfo {
                 .toLowerCase(Locale.ROOT);
 
         if (haystack.contains("folia")) {
-            if ("folia".equals(artifact)) {
-                return new PlatformInfo("folia", "Dogfood verified (Folia artifact; soak pending)", "folia");
+            if ("folia".equals(artifact) || "paper-modern".equals(artifact)) {
+                return new PlatformInfo("folia", "Dogfood verified (Folia-capable jar; soak cleared)", artifact);
             }
             return new PlatformInfo(
                     "folia",
                     "Experimental (no public Folia claim)",
                     artifact,
-                    "Folia detected — use PlugTrace-folia (folia-supported), not " + artifact
+                    "Folia detected — use PlugTrace-1.0.0.jar (folia-supported), not " + artifact
             );
         }
         if (haystack.contains("purpur")) {
@@ -68,14 +68,14 @@ public final class PlatformInfo {
             return new PlatformInfo("paper", tier, artifact);
         }
         if (haystack.contains("spigot") || haystack.contains("craftbukkit") || haystack.contains("bukkit")) {
-            if ("bukkit-modern".equals(artifact)) {
-                return new PlatformInfo("bukkit-family", "Experimental Java 17 adapter", "bukkit-modern");
+            if ("bukkit-modern".equals(artifact) || "paper-modern".equals(artifact)) {
+                return new PlatformInfo("bukkit-family", "Experimental dogfood (Java 17 / api 1.20)", artifact);
             }
             return new PlatformInfo(
                     "bukkit-family",
                     "Compatible (unverified)",
                     artifact,
-                    "Spigot/Bukkit detected — prefer PlugTrace bukkit-modern experimental artifact"
+                    "Spigot/Bukkit detected — use PlugTrace-1.0.0.jar (api-version 1.20)"
             );
         }
         return new PlatformInfo("unknown", "Unknown", artifact);

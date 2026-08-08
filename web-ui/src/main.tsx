@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import {createRoot} from 'react-dom/client'
 import {BaseStyles, Box, Button, Flash, FormControl, Heading, Label, PageLayout, Text, TextInput, ThemeProvider} from '@primer/react'
-import {CheckCircleFillIcon, DiffIcon, DotFillIcon, HistoryIcon, IssueOpenedIcon, MilestoneIcon, ShieldCheckIcon, SyncIcon} from '@primer/octicons-react'
+import {AlertFillIcon, CheckCircleFillIcon, DiffIcon, DotFillIcon, HistoryIcon, IssueOpenedIcon, MilestoneIcon, ShieldCheckIcon, SyncIcon, XCircleFillIcon} from '@primer/octicons-react'
 import './styles.css'
 
 function healthSymbol(health: string) {
@@ -14,9 +14,26 @@ function healthSymbol(health: string) {
   }
 }
 
+function healthTone(health: string): 'ok' | 'bad' | 'warn' | 'muted' {
+  switch ((health || 'UNKNOWN').toUpperCase()) {
+    case 'HEALTHY': return 'ok'
+    case 'FAILING':
+    case 'CRASHED': return 'bad'
+    case 'DEGRADED': return 'warn'
+    default: return 'muted'
+  }
+}
+
 function HealthPill({health}: {health: string}) {
   const key = (health || 'UNKNOWN').toUpperCase()
   return <span className={`health-pill ${key}`}><span aria-hidden>{healthSymbol(key)}</span>{key}</span>
+}
+
+function HeroGlyph({health}: {health: string}) {
+  const tone = healthTone(health)
+  if (tone === 'bad') return <XCircleFillIcon size={44} className="hero-glyph bad"/>
+  if (tone === 'warn') return <AlertFillIcon size={44} className="hero-glyph warn"/>
+  return <CheckCircleFillIcon size={44} className="hero-glyph ok"/>
 }
 
 type Tab = 'overview' | 'timeline' | 'deployments' | 'diff' | 'checkpoints' | 'checks' | 'issues' | 'incidents' | 'reports' | 'recovery' | 'settings'
@@ -151,11 +168,41 @@ function Overview({status, health, onVerify}: {status: AnyRecord; health: string
   const verification = status.verification || {}
   const ritual = status.ritual || {}
   const topChanges: AnyRecord[] = Array.isArray(ritual.topChanges) ? ritual.topChanges : []
+  const checks: AnyRecord[] = Array.isArray(verification.checks) ? verification.checks : []
+  const failedChecks = checks.filter((c) => {
+    const s = String(c.status || '').toUpperCase()
+    return s === 'FAIL' || s === 'FAILED' || s === 'WARN' || s === 'WARNING'
+  })
+  const jarChanges = topChanges.filter((row) => {
+    const t = String(row.type || '').toUpperCase()
+    return t.includes('BINARY') || t.includes('COMPONENT') || t.includes('JAR')
+  })
   const suspect = ritual.strongestSuspect || null
   const noise = ritual.noiseContext || {}
   const nextCommands: string[] = Array.isArray(ritual.nextCommands) ? ritual.nextCommands : (ritual.nextCommand ? [ritual.nextCommand] : [])
+  const tone = healthTone(health)
+  const failingStory = tone === 'bad' || tone === 'warn'
   return <><div className="page-head"><div><Text sx={{color: 'fg.muted'}}>CURRENT DEPLOYMENT</Text><h1>Did this update work?</h1></div><Button leadingVisual={SyncIcon} onClick={onVerify}>Run verification</Button></div>
-    <section className="hero"><div><HealthPill health={health}/><Heading as="h2">Deployment <span className="mono">#{status.deployment?.localSequence}</span></Heading><Text as="p" sx={{color: 'fg.muted'}}>{status.baseline}</Text></div><CheckCircleFillIcon size={44}/></section>
+    <section className={`hero ${tone}`}><div><HealthPill health={health}/><Heading as="h2">Deployment <span className="mono">#{status.deployment?.localSequence}</span></Heading><Text as="p" sx={{color: 'fg.muted'}}>{status.baseline}</Text>
+      {failingStory && suspect ? <Text as="p" sx={{m: '0.5rem 0 0'}}><strong>Strongest suspect:</strong> {String(suspect.component)} <Label>{String(suspect.band)}</Label></Text> : null}
+    </div><HeroGlyph health={health}/></section>
+    {failingStory && failedChecks.length > 0 && (
+      <section className="panel story-band"><Heading as="h2">Failed checks</Heading>
+        {failedChecks.slice(0, 8).map((check: AnyRecord) => (
+          <div className="check" key={check.checkId}><Label variant={check.status === 'FAIL' || check.status === 'FAILED' ? 'danger' : 'attention'}>{check.status}</Label><div><strong>{check.displayName}</strong><Text as="p" sx={{color:'fg.muted', m:0}}>{check.summary}</Text></div></div>
+        ))}
+      </section>
+    )}
+    {failingStory && (jarChanges.length > 0 || topChanges.length > 0) && (
+      <section className="panel story-band"><Heading as="h2">Top changed JARs</Heading>
+        {(jarChanges.length ? jarChanges : topChanges).slice(0, 6).map((row, i) => (
+          <div className="check" key={String(row.component) + i}><Label>{String(row.type)}</Label><div><strong>{String(row.component)}</strong><Text as="p" sx={{color:'fg.muted', m:0}}>{String(row.explanation || '')}</Text></div></div>
+        ))}
+      </section>
+    )}
+    <section className="panel share-band"><Heading as="h2">Share to plugtrace.dev</Heading>
+      <Text as="p" sx={{color:'fg.muted', m:0}}>Spark opens a profile; PlugTrace opens a deployment report. From the server console run <code className="mono">/plugtrace share</code> (alias of report upload). Paste the full URL including <code className="mono">#k=…</code>. This local UI does not upload.</Text>
+    </section>
     <div className="metric-grid"><Metric title="Checks" value={verification.checks?.length ?? ritual.verificationChecks ?? '—'} icon={<ShieldCheckIcon/>}/><Metric title="Changes" value={status.changes ?? ritual.changeCount ?? 0} icon={<HistoryIcon/>}/><Metric title="Issues" value={status.issues ?? ritual.issueCount ?? 0} icon={<IssueOpenedIcon/>}/><Metric title="Privacy" value="Local only" icon={<DotFillIcon/>}/></div>
     <section className="panel"><Heading as="h2">Ritual</Heading>
       {suspect ? <Text as="p" sx={{m: 0}}><strong>Strongest suspect:</strong> {String(suspect.component)} <Label>{String(suspect.band)}</Label>{suspect.knownChurn ? <Label variant="attention">known churn</Label> : null}<Text as="span" sx={{display:'block', color:'fg.muted', mt:1}}>{String(suspect.summary || '')}</Text></Text> : <Text as="p" sx={{color:'fg.muted'}}>No ranked suspect yet.</Text>}
@@ -226,7 +273,7 @@ function DataPage({tab, rows}: {tab: Tab; rows: AnyRecord[]}) {
 
 export function ReportsPage({rows, actionResult, onGenerate}: {rows: AnyRecord[]; actionResult?: AnyRecord | null; onGenerate: () => Promise<void>}) {
   return <><div className="page-head"><div><Text sx={{color:'fg.muted'}}>LOCAL EXPORT</Text><h1>Reports</h1></div><Button variant="primary" onClick={onGenerate}>Generate local report</Button></div>
-    <section className="panel"><Heading as="h2">Preview</Heading><Text as="p" sx={{color:'fg.muted'}}>Reports stay on this server and are never uploaded automatically.</Text>
+    <section className="panel"><Heading as="h2">Preview</Heading><Text as="p" sx={{color:'fg.muted'}}>Reports stay on this server and are never uploaded automatically. To share like a spark profile, run <code className="mono">/plugtrace share</code> on the console (full URL with <code className="mono">#k=…</code>).</Text>
       <pre>{JSON.stringify(actionResult || rows[0] || {}, null, 2)}</pre></section></>
 }
 

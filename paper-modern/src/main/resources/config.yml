@@ -34,6 +34,10 @@ expected:
 privacy:
   mode: hash-only
 
+# Anonymous bStats (plugin id 32755). Global opt-out: plugins/bStats/config.yml
+metrics:
+  enabled: true
+
 web:
   enabled: true
   bind: 127.0.0.1
@@ -48,3 +52,10 @@ cloud:
   uploadUrl: https://plugtrace.dev/
   viewerUrl: https://plugtrace.dev/
   ttlDays: 14
+
+# Opt-in FAILING interrupt (not fleet Cloud). Empty webhook = off.
+# Posts a redacted ritual digest only — never raw stacks; never auto /report upload.
+notify:
+  discordWebhookUrl: ""
+  onFailing: true
+  onDegraded: false

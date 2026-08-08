@@ -1,7 +1,9 @@
 package dev.pluglabs.plugtrace.paper;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import dev.pluglabs.plugtrace.api.PlugTraceAPI;
 import dev.pluglabs.plugtrace.api.PlugTraceBridge;
 import dev.pluglabs.plugtrace.api.MigrationRecord;
@@ -95,6 +97,25 @@ public final class PlugTraceService implements AutoCloseable {
     private static final Set<String> ANNOTATION_CATEGORIES = Set.of(
             "ops", "migration", "traffic", "host", "season", "ddos", "other", "spark"
     );
+    private static final long INGEST_DB_DEBOUNCE_MS = 250L;
+    private static final long INGEST_SUSPECTS_DEBOUNCE_MS = 400L;
+    private static final int FULL_STACKS_PER_SECOND = 8;
+
+    private sealed interface QueuedCapture permits ReadyIssueCapture, DeferredExceptionCapture {
+    }
+
+    private record ReadyIssueCapture(IssueEvent event) implements QueuedCapture {
+    }
+
+    private record DeferredExceptionCapture(
+            Instant eventAt,
+            String severity,
+            Throwable thrown,
+            String message,
+            List<String> loggerHints,
+            String threadName
+    ) implements QueuedCapture {
+    }
 
     private final Logger logger;
     private final Path dataFolder;
@@ -108,12 +129,17 @@ public final class PlugTraceService implements AutoCloseable {
     private final AttributionEngine attributionEngine = new AttributionEngine();
     private final ReportService reportService = new ReportService();
     private final RedactionService redaction = new RedactionService();
-    private final LinkedBlockingQueue<IssueEvent> queue = new LinkedBlockingQueue<>(10_000);
+    private final LinkedBlockingQueue<QueuedCapture> queue = new LinkedBlockingQueue<>(10_000);
     private final AtomicLong droppedEvents = new AtomicLong();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final Map<String, Issue> issueBuffer = new ConcurrentHashMap<>();
     private final Map<String, String> safeFields = new ConcurrentHashMap<>();
     private final Map<String, List<String>> rawSamples = new ConcurrentHashMap<>();
+    private final Map<String, String> lightKeyToFingerprint = new ConcurrentHashMap<>();
+    private final Set<String> dirtyIssueFingerprints = ConcurrentHashMap.newKeySet();
+    private final ExceptionStormBudget stormBudget = new ExceptionStormBudget(FULL_STACKS_PER_SECOND);
+    private long nextDbFlushAtMillis;
+    private long nextSuspectsAtMillis;
     private final SchedulerFacade scheduler;
     private final VerificationEngine verificationEngine = new VerificationEngine();
     private final Map<String, RegisteredCheck> registeredChecks = new ConcurrentHashMap<>();
@@ -155,6 +181,16 @@ public final class PlugTraceService implements AutoCloseable {
     private org.bukkit.Server server;
     private PluginManager pluginManager;
     private volatile StackOwnershipIndex ownershipIndex = StackOwnershipIndex.empty();
+    /** Soft-detected updater plugin names for this boot. */
+    private List<String> updaterNames = List.of();
+    /** Players already shown a join digest for the sticky deployment. */
+    private final Set<String> joinDigestPlayers = ConcurrentHashMap.newKeySet();
+    /** Deployment id already Discord-webhooked (rate limit 1/deploy). */
+    private volatile String webhookNotifiedDeploymentId;
+    /** Operator cleared sticky interrupt without an OPEN incident row. */
+    private volatile boolean operatorInterruptCleared;
+    /** True after this boot completed a final observation verification. */
+    private volatile boolean observationFinalized;
 
     public PlugTraceService(Logger logger, Path dataFolder, FileConfiguration config) {
         this(logger, dataFolder, config, "paper-modern", null);
@@ -249,8 +285,8 @@ public final class PlugTraceService implements AutoCloseable {
 
         this.noiseRules = loadNoiseRules();
         detectSpark(pluginManager, server);
-        List<String> updaters = UpdaterCoexistence.detectNames(pluginManager);
-        String updaterSummary = UpdaterCoexistence.summary(updaters);
+        this.updaterNames = UpdaterCoexistence.detectNames(pluginManager);
+        String updaterSummary = UpdaterCoexistence.summary(updaterNames);
         if (updaterSummary != null) {
             logger.info(updaterSummary);
         }
@@ -323,6 +359,7 @@ public final class PlugTraceService implements AutoCloseable {
         this.baseline = selectedBaseline.orElse(null);
         this.baselineDescription = baselineSelector.describe(selectedBaseline);
         this.currentChanges = diffEngine.diff(baseline, currentDeployment);
+        this.observationFinalized = false;
         store.saveDeployment(currentDeployment);
         List<ComponentSnapshot> ownershipComponents = currentDeployment.components();
         List<ComponentSnapshot> retainComponents = List.copyOf(ownershipComponents);
@@ -361,6 +398,9 @@ public final class PlugTraceService implements AutoCloseable {
                             + "<gray>+</gray> <aqua>expected capture</aqua>");
             PlugTraceMessages.consoleRitual(logger,
                     "<gray>Ritual: after every risky restart, read</gray> <aqua>/plugtrace status</aqua>");
+            announceBaselineNag();
+        } else if (checkpoints(1).isEmpty()) {
+            announceBaselineNag();
         }
         PlugTraceMessages.consoleRitual(logger,
                 "<gray>Core history is local; nothing has been uploaded.</gray>");
@@ -565,14 +605,29 @@ public final class PlugTraceService implements AutoCloseable {
             List<CheckResult> checks, boolean observationComplete, boolean severe) {
         currentVerification = verificationEngine.evaluate(UUID.randomUUID().toString(), currentDeployment.id(),
                 Instant.now(), checks, observationComplete, severe);
+        DeploymentHealth next = currentVerification.health();
+        if (observationComplete) {
+            observationFinalized = true;
+        } else if (observationFinalized && next == DeploymentHealth.UNKNOWN) {
+            // Scheduled early probes must not erase a finalized HEALTHY result.
+            next = DeploymentHealth.HEALTHY;
+            currentVerification = new DeploymentVerification(
+                    currentVerification.id(),
+                    currentVerification.deploymentId(),
+                    currentVerification.verifiedAt(),
+                    next,
+                    currentVerification.checks(),
+                    true,
+                    currentVerification.newSevereIssue());
+        }
         store.saveVerification(currentVerification);
         List<String> reasons = checks.stream()
                 .filter(result -> result.status() == CheckStatus.FAIL || result.status() == CheckStatus.WARN)
                 .map(CheckResult::summary).limit(8).toList();
-        currentDeployment = currentDeployment.withHealth(currentVerification.health(), reasons);
+        currentDeployment = currentDeployment.withHealth(next, reasons);
         store.saveDeployment(currentDeployment);
-        if (currentVerification.health() == DeploymentHealth.FAILING
-                || currentVerification.health() == DeploymentHealth.DEGRADED) {
+        if (next == DeploymentHealth.FAILING
+                || next == DeploymentHealth.DEGRADED) {
             List<String> failed = checks.stream().filter(r -> r.status() == CheckStatus.FAIL || r.status() == CheckStatus.WARN)
                     .map(CheckResult::checkId).toList();
             List<String> issueFingerprints = currentIssues().stream().filter(i -> i.status() == IssueStatus.NEW)
@@ -595,6 +650,12 @@ public final class PlugTraceService implements AutoCloseable {
     private void announceVerificationOutcome(List<CheckResult> checks, boolean observationComplete) {
         DeploymentHealth health = currentVerification.health();
         String window = observationComplete ? "observation complete" : "early check";
+
+        if (health == DeploymentHealth.FAILING || health == DeploymentHealth.DEGRADED) {
+            announceFailingRitual(checks, health, window);
+            return;
+        }
+
         PlugTraceMessages.consoleRitual(logger,
                 PlugTraceMessages.healthMini(health)
                         + " <dark_gray>-</dark_gray> <gray>deployment</gray> <aqua>#"
@@ -606,35 +667,45 @@ public final class PlugTraceService implements AutoCloseable {
             boolean noCheckpoint = checkpoints(1).isEmpty();
             if (noCheckpoint) {
                 PlugTraceMessages.consoleRitual(logger,
-                        "<green>+</green> <white>First HEALTHY window</white> <gray>- lock a baseline now:</gray>");
-                PlugTraceMessages.consoleRitual(logger, "<dark_gray>  </dark_gray><aqua>/plugtrace checkpoint first-healthy</aqua>");
-                PlugTraceMessages.consoleRitual(logger, "<dark_gray>  </dark_gray><aqua>/plugtrace expected capture</aqua>");
-                PlugTraceMessages.consoleRitual(logger, "<dark_gray>  </dark_gray><aqua>/plugtrace mark healthy</aqua>");
-                PlugTraceMessages.consoleRitual(logger,
-                        "<gray>Install-before-break: without a checkpoint, PlugTrace cannot invent last night's healthy state.</gray>");
+                        "<gray>Lock baseline:</gray> "
+                                + "<aqua>/plugtrace checkpoint first-healthy</aqua> "
+                                + "<dark_gray>·</dark_gray> <aqua>expected capture</aqua> "
+                                + "<dark_gray>·</dark_gray> <aqua>mark healthy</aqua>");
             } else if (baseline == null) {
                 PlugTraceMessages.consoleRitual(logger,
-                        "<green>+</green> <white>HEALTHY</white> <gray>- consider</gray> <aqua>/plugtrace mark healthy</aqua> "
-                                + "<gray>so the next restart diffs against this deployment.</gray>");
+                        "<gray>Consider</gray> <aqua>/plugtrace mark healthy</aqua> "
+                                + "<gray>so the next restart diffs here.</gray>");
             }
-            return;
         }
+    }
 
-        if (health != DeploymentHealth.FAILING && health != DeploymentHealth.DEGRADED) {
-            return;
-        }
+    private void announceFailingRitual(List<CheckResult> checks, DeploymentHealth health, String window) {
+        joinDigestPlayers.clear();
+        operatorInterruptCleared = false;
 
-        PlugTraceMessages.bannerOpen(PlugTraceMessages.console(), health);
+        // Compact FAILING/DEGRADED: banner carries # + window (no duplicate status line).
+        PlugTraceMessages.bannerOpen(
+                logger,
+                health,
+                currentDeployment.localSequence(),
+                window);
+
         checks.stream()
                 .filter(r -> r.status() == CheckStatus.FAIL || r.status() == CheckStatus.WARN)
-                .limit(8)
-                .forEach(r -> PlugTraceMessages.consoleRitualWarn(logger,
-                        (r.status() == CheckStatus.FAIL
-                                ? "<red>x</red> "
-                                : "<gold>!</gold> ")
-                                + "<white>" + PlugTraceMessages.escape(r.checkId()) + "</white> "
-                                + "<dark_gray>-</dark_gray> <gray>"
-                                + PlugTraceMessages.escape(r.summary()) + "</gray>"));
+                .limit(5)
+                .forEach(r -> {
+                    String summary = r.summary() == null ? "" : r.summary();
+                    if (summary.length() > 96) {
+                        summary = summary.substring(0, 93) + "...";
+                    }
+                    PlugTraceMessages.consoleRitualWarn(logger,
+                            (r.status() == CheckStatus.FAIL
+                                    ? "<red>x</red> "
+                                    : "<gold>!</gold> ")
+                                    + "<white>" + PlugTraceMessages.escape(r.checkId()) + "</white> "
+                                    + "<dark_gray>—</dark_gray> <gray>"
+                                    + PlugTraceMessages.escape(summary) + "</gray>");
+                });
 
         List<Change> jarChanges = currentChanges == null ? List.of() : currentChanges.stream()
                 .filter(c -> c.type() == ChangeType.VERSION_CHANGED
@@ -645,24 +716,34 @@ public final class PlugTraceService implements AutoCloseable {
                 .limit(5)
                 .toList();
         if (!jarChanges.isEmpty()) {
-            PlugTraceMessages.consoleRitualWarn(logger,
-                    "<gradient:#22d3ee:#2dd4bf>Top changed JARs / versions</gradient>");
-            jarChanges.forEach(c -> PlugTraceMessages.consoleRitualWarn(logger,
-                    "<dark_gray>-</dark_gray> <aqua>" + PlugTraceMessages.escape(String.valueOf(c.type()))
-                            + "</aqua> <white>" + PlugTraceMessages.escape(c.componentKey()) + "</white>"
-                            + (c.explanation().isBlank() ? ""
-                            : " <dark_gray>-</dark_gray> <gray>"
-                            + PlugTraceMessages.escape(c.explanation()) + "</gray>")));
-        } else {
-            PlugTraceMessages.consoleRitualWarn(logger,
-                    "<gray>No JAR/version deltas vs baseline (or no baseline yet).</gray>");
+            StringBuilder jars = new StringBuilder("<gray>JARs:</gray> ");
+            boolean first = true;
+            for (Change c : jarChanges) {
+                if (!first) {
+                    jars.append(" <dark_gray>·</dark_gray> ");
+                }
+                first = false;
+                jars.append("<aqua>")
+                        .append(PlugTraceMessages.escape(PlugTraceMessages.jarTypeMark(String.valueOf(c.type()))))
+                        .append("</aqua> <white>")
+                        .append(PlugTraceMessages.escape(
+                                PlugTraceMessages.shortComponentKey(c.componentKey())))
+                        .append("</white>");
+            }
+            PlugTraceMessages.consoleRitualWarn(logger, jars.toString());
         }
 
-        PlugTraceMessages.consoleRitualWarn(logger,
-                "<white>Next:</white> <aqua>/plugtrace restore preview</aqua>");
-        PlugTraceMessages.consoleRitualWarn(logger,
-                "<white>Share:</white> <aqua>/plugtrace report upload</aqua> "
-                        + "<dark_gray>(or</dark_gray> <aqua>report preview</aqua><dark_gray>)</dark_gray>");
+        if (!updaterNames.isEmpty() && !jarChanges.isEmpty()) {
+            PlugTraceMessages.consoleRitualWarn(logger,
+                    "<gold>!</gold> <gray>Updater ("
+                            + PlugTraceMessages.escape(String.join(", ", updaterNames))
+                            + ") — JAR deltas may be intentional swaps.</gray>");
+        }
+
+        PlugTraceMessages.consoleActionRow(logger, List.of(
+                new PlugTraceMessages.ActionChip("restore", "/plugtrace restore preview"),
+                new PlugTraceMessages.ActionChip("share", "/plugtrace share"),
+                new PlugTraceMessages.ActionChip("ack", "/plugtrace incidents ack")));
 
         boolean msptWarn = checks.stream().anyMatch(r ->
                 "mspt-regression".equals(r.checkId())
@@ -670,14 +751,14 @@ public final class PlugTraceService implements AutoCloseable {
         if (msptWarn) {
             if (sparkDetected) {
                 PlugTraceMessages.consoleRitualWarn(logger,
-                        "<gold>!</gold> <gray>MSPT + spark - capture a profile, then</gray> "
+                        "<gold>!</gold> <gray>MSPT + spark →</gray> "
                                 + "<aqua>/plugtrace spark link &lt;url&gt;</aqua>");
             } else {
                 PlugTraceMessages.consoleRitualWarn(logger,
-                        "<gold>!</gold> <gray>MSPT regression - use spark for lag; PlugTrace owns what changed.</gray>");
+                        "<gold>!</gold> <gray>MSPT regression — use spark for lag.</gray>");
             }
         }
-        PlugTraceMessages.bannerClose(PlugTraceMessages.console(), health);
+        maybeNotifyDiscord(health);
     }
 
     /** Headless/tests only. Bukkit command and lifecycle paths use the non-blocking method. */
@@ -888,11 +969,28 @@ public final class PlugTraceService implements AutoCloseable {
     }
 
     public Checkpoint createCheckpoint(String name, String actor) {
+        return createCheckpointResult(name, actor).checkpoint();
+    }
+
+    public record CheckpointResult(Checkpoint checkpoint, boolean promotedFromUnknown) {
+    }
+
+    /**
+     * Lock a checkpoint on the current deployment.
+     * UNKNOWN boots are promoted to HEALTHY (operator is seeding); FAILING/DEGRADED/CRASHED refuse.
+     */
+    public CheckpointResult createCheckpointResult(String name, String actor) {
+        CheckpointPolicy.requireNotBroken(currentDeployment);
+        boolean promoted = false;
+        if (CheckpointPolicy.decide(currentDeployment.health()) == CheckpointPolicy.Decision.PROMOTE_UNKNOWN) {
+            markHealth(DeploymentHealth.HEALTHY, "Marked HEALTHY for checkpoint");
+            promoted = true;
+        }
         CheckpointPolicy.requireHealthy(currentDeployment);
         Checkpoint checkpoint = new Checkpoint(UUID.randomUUID().toString(), currentDeployment.id(), name,
                 Instant.now(), actor);
         store.saveCheckpoint(checkpoint);
-        return checkpoint;
+        return new CheckpointResult(checkpoint, promoted);
     }
 
     public DeploymentVerification currentVerification() { return currentVerification; }
@@ -940,24 +1038,15 @@ public final class PlugTraceService implements AutoCloseable {
                         }
                         """);
             }
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(Files.readString(rulesFile));
+            JsonObject root = JsonParser.parseString(Files.readString(rulesFile)).getAsJsonObject();
             List<String> fingerprints = new ArrayList<>();
             List<String> substrings = new ArrayList<>();
             List<String> churnComponents = new ArrayList<>();
             List<String> churnMessages = new ArrayList<>();
-            if (root.has("suppressedFingerprints")) {
-                root.get("suppressedFingerprints").forEach(n -> fingerprints.add(n.asText()));
-            }
-            if (root.has("suppressedMessageSubstrings")) {
-                root.get("suppressedMessageSubstrings").forEach(n -> substrings.add(n.asText()));
-            }
-            if (root.has("knownChurnComponents")) {
-                root.get("knownChurnComponents").forEach(n -> churnComponents.add(n.asText()));
-            }
-            if (root.has("knownChurnMessageSubstrings")) {
-                root.get("knownChurnMessageSubstrings").forEach(n -> churnMessages.add(n.asText()));
-            }
+            readStringArray(root, "suppressedFingerprints", fingerprints);
+            readStringArray(root, "suppressedMessageSubstrings", substrings);
+            readStringArray(root, "knownChurnComponents", churnComponents);
+            readStringArray(root, "knownChurnMessageSubstrings", churnMessages);
             if (churnComponents.isEmpty() && churnMessages.isEmpty()
                     && fingerprints.isEmpty() && substrings.isEmpty()) {
                 // Fresh empty file from older templates — still apply PlugDev context defaults.
@@ -969,6 +1058,18 @@ public final class PlugTraceService implements AutoCloseable {
         } catch (Exception e) {
             logger.warning("Failed to load noise rules: " + e.getMessage());
             return NoiseRules.plugDevDefaults();
+        }
+    }
+
+    private static void readStringArray(JsonObject root, String key, List<String> out) {
+        if (root == null || !root.has(key) || !root.get(key).isJsonArray()) {
+            return;
+        }
+        JsonArray array = root.getAsJsonArray(key);
+        for (JsonElement element : array) {
+            if (element != null && element.isJsonPrimitive()) {
+                out.add(element.getAsString());
+            }
         }
     }
 
@@ -1057,13 +1158,13 @@ public final class PlugTraceService implements AutoCloseable {
             }
             case FAILING, CRASHED -> List.of(
                     "/plugtrace restore preview",
-                    "/plugtrace report upload",
+                    "/plugtrace share",
                     "/plugtrace suspect"
             );
             case DEGRADED -> List.of(
                     "/plugtrace suspect",
                     "/plugtrace diff",
-                    "/plugtrace report upload",
+                    "/plugtrace share",
                     "/plugtrace annotate ops <why this is expected or not>"
             );
             case UNKNOWN -> List.of("/plugtrace verify run", "/plugtrace status");
@@ -1072,10 +1173,38 @@ public final class PlugTraceService implements AutoCloseable {
     }
 
     public void enqueue(IssueEvent event) {
-        if (!running.get()) {
+        if (!running.get() || event == null) {
             return;
         }
-        if (!queue.offer(event)) {
+        if (!queue.offer(new ReadyIssueCapture(event))) {
+            droppedEvents.incrementAndGet();
+            logger.warning("PlugTrace event queue saturated; dropping low-value sample.");
+        }
+    }
+
+    /**
+     * Capture path for logger exceptions: keep the logging thread light; materialize stacks on the worker.
+     */
+    public void enqueueDeferredException(
+            Instant eventAt,
+            String severity,
+            Throwable thrown,
+            String message,
+            List<String> loggerHints,
+            String threadName
+    ) {
+        if (!running.get() || thrown == null) {
+            return;
+        }
+        DeferredExceptionCapture capture = new DeferredExceptionCapture(
+                eventAt == null ? Instant.now() : eventAt,
+                severity,
+                thrown,
+                message,
+                loggerHints == null ? List.of() : List.copyOf(loggerHints),
+                threadName
+        );
+        if (!queue.offer(capture)) {
             droppedEvents.incrementAndGet();
             logger.warning("PlugTrace event queue saturated; dropping low-value sample.");
         }
@@ -1170,6 +1299,173 @@ public final class PlugTraceService implements AutoCloseable {
         tags.add(health.name().toLowerCase(Locale.ROOT));
         currentDeployment = currentDeployment.withHealth(health, reasons).withTags(tags);
         store.markDeploymentHealth(currentDeployment.id(), health, reasons, tags);
+        if (health == DeploymentHealth.HEALTHY) {
+            clearOperatorSticky("Marked healthy");
+        }
+    }
+
+    /** True when FAILING/DEGRADED and operator has not ack/ignore yet. */
+    public boolean needsOperatorInterrupt() {
+        if (currentDeployment == null || operatorInterruptCleared) {
+            return false;
+        }
+        DeploymentHealth health = currentDeployment.health();
+        if (health != DeploymentHealth.FAILING && health != DeploymentHealth.DEGRADED) {
+            return false;
+        }
+        List<Incident> incidents = currentIncidents();
+        boolean handled = incidents.stream().anyMatch(i ->
+                i.status() == IncidentStatus.INVESTIGATING
+                        || i.status() == IncidentStatus.IGNORED
+                        || i.status() == IncidentStatus.RESOLVED);
+        return !handled;
+    }
+
+    public boolean needsBaselineNag() {
+        return baseline == null || checkpoints(1).isEmpty();
+    }
+
+    /**
+     * Op-join digest: once per player per sticky FAILING/DEGRADED deploy until ack.
+     * Also short baseline nag when no checkpoint.
+     */
+    public void onOperatorJoin(org.bukkit.entity.Player player) {
+        if (player == null) {
+            return;
+        }
+        if (needsBaselineNag()) {
+            PlugTraceMessages.warn(player,
+                    "No checkpoint yet — after HEALTHY run /plugtrace checkpoint + expected capture + mark healthy");
+        }
+        if (!needsOperatorInterrupt()) {
+            return;
+        }
+        String key = player.getUniqueId().toString();
+        if (!joinDigestPlayers.add(key)) {
+            return;
+        }
+        DeploymentHealth health = currentDeployment.health();
+        PlugTraceMessages.send(player, PlugTraceMessages.healthMini(health)
+                + " <dark_gray>-</dark_gray> <gray>deployment</gray> <aqua>#"
+                + currentDeployment.localSequence() + "</aqua>");
+        PlugTraceMessages.row(player, "Suspect", strongestSuspectLabel());
+        PlugTraceMessages.sendActionRow(player, List.of(
+                new PlugTraceMessages.ActionChip("status", "/plugtrace status"),
+                new PlugTraceMessages.ActionChip("restore", "/plugtrace restore preview"),
+                new PlugTraceMessages.ActionChip("share", "/plugtrace share"),
+                new PlugTraceMessages.ActionChip("ack", "/plugtrace incidents ack")));
+    }
+
+    public String ackOpenIncident(String incidentIdOrNull) {
+        Incident target = resolveOpenIncident(incidentIdOrNull);
+        if (target == null) {
+            if (needsOperatorInterrupt()) {
+                operatorInterruptCleared = true;
+                clearOperatorSticky("Incident ack (no OPEN row)");
+                return "No OPEN incident row; sticky join nag cleared for this deployment.";
+            }
+            return "No OPEN incident to acknowledge for this deployment.";
+        }
+        Incident updated = new Incident(
+                target.id(), target.deploymentId(), target.verificationId(),
+                target.openedAt(), Instant.now(), IncidentStatus.INVESTIGATING,
+                target.summary(), target.issueFingerprints(), target.failedCheckIds());
+        store.saveIncident(updated);
+        operatorInterruptCleared = true;
+        clearOperatorSticky("Incident acknowledged");
+        return "Incident " + updated.id() + " → INVESTIGATING (join nag cleared for this deployment).";
+    }
+
+    public String ignoreOpenIncident(String incidentIdOrNull) {
+        Incident target = resolveOpenIncident(incidentIdOrNull);
+        if (target == null) {
+            if (needsOperatorInterrupt()) {
+                operatorInterruptCleared = true;
+                clearOperatorSticky("Incident ignore (no OPEN row)");
+                return "No OPEN incident row; sticky join nag cleared for this deployment.";
+            }
+            return "No OPEN incident to ignore for this deployment.";
+        }
+        Incident updated = new Incident(
+                target.id(), target.deploymentId(), target.verificationId(),
+                target.openedAt(), Instant.now(), IncidentStatus.IGNORED,
+                target.summary(), target.issueFingerprints(), target.failedCheckIds());
+        store.saveIncident(updated);
+        operatorInterruptCleared = true;
+        clearOperatorSticky("Incident ignored");
+        return "Incident " + updated.id() + " → IGNORED (join nag cleared for this deployment).";
+    }
+
+    private Incident resolveOpenIncident(String incidentIdOrNull) {
+        List<Incident> open = currentIncidents().stream()
+                .filter(i -> i.status() == IncidentStatus.OPEN)
+                .toList();
+        if (open.isEmpty()) {
+            return null;
+        }
+        if (incidentIdOrNull == null || incidentIdOrNull.isBlank()) {
+            return open.get(0);
+        }
+        return open.stream()
+                .filter(i -> i.id().equalsIgnoreCase(incidentIdOrNull))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private void clearOperatorSticky(String reason) {
+        joinDigestPlayers.clear();
+        operatorInterruptCleared = true;
+        if (reason != null && !reason.isBlank()) {
+            annotate("ops", reason, "plugtrace", null);
+        }
+    }
+
+    private void announceBaselineNag() {
+        PlugTraceMessages.consoleRitualWarn(logger,
+                "<gold>!</gold> <white>Baseline nag</white> <gray>- no checkpoint locked. "
+                        + "Install-before-break: after HEALTHY →</gray> "
+                        + "<aqua>/plugtrace checkpoint</aqua> "
+                        + "<aqua>expected capture</aqua> "
+                        + "<aqua>mark healthy</aqua>");
+    }
+
+    private void maybeNotifyDiscord(DeploymentHealth health) {
+        OperatorConfig cfg = operatorConfig;
+        if (cfg == null || cfg.notifyDiscordWebhookUrl == null || cfg.notifyDiscordWebhookUrl.isBlank()) {
+            return;
+        }
+        if (health == DeploymentHealth.FAILING && !cfg.notifyOnFailing) {
+            return;
+        }
+        if (health == DeploymentHealth.DEGRADED && !cfg.notifyOnDegraded) {
+            return;
+        }
+        if (health != DeploymentHealth.FAILING && health != DeploymentHealth.DEGRADED) {
+            return;
+        }
+        String deployId = currentDeployment == null ? null : currentDeployment.id();
+        if (deployId != null && deployId.equals(webhookNotifiedDeploymentId)) {
+            return;
+        }
+        webhookNotifiedDeploymentId = deployId;
+        StringBuilder body = new StringBuilder();
+        body.append("**PlugTrace** `").append(health.name()).append("` deployment #")
+                .append(currentDeployment.localSequence()).append('\n');
+        body.append("Suspect: ").append(strongestSuspectLabel()).append('\n');
+        body.append("Baseline: ").append(baselineDescription).append('\n');
+        if (!updaterNames.isEmpty()) {
+            body.append("Updater present: ").append(String.join(", ", updaterNames)).append('\n');
+        }
+        body.append("Next: `/plugtrace status` · `/plugtrace restore preview` · `/plugtrace share`\n");
+        body.append("Ack: `/plugtrace incidents ack`");
+        String redacted = redaction.redact(body.toString());
+        DiscordWebhookNotifier.postAsync(cfg.notifyDiscordWebhookUrl, redacted, logger);
+        PlugTraceMessages.consoleRitual(logger,
+                "<aqua>*</aqua> <gray>Discord webhook notify queued (redacted ritual digest).</gray>");
+    }
+
+    public List<String> updaterNames() {
+        return updaterNames;
     }
 
     public Annotation annotate(String category, String text, String actor, String link) {
@@ -1388,11 +1684,12 @@ public final class PlugTraceService implements AutoCloseable {
     private void drainLoop() {
         while (running.get()) {
             try {
-                IssueEvent event = queue.poll(250, TimeUnit.MILLISECONDS);
-                if (event == null) {
+                QueuedCapture capture = queue.poll(250, TimeUnit.MILLISECONDS);
+                if (capture == null) {
+                    flushIngest(true);
                     continue;
                 }
-                ingest(event);
+                processCapture(capture);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
@@ -1402,8 +1699,72 @@ public final class PlugTraceService implements AutoCloseable {
         }
     }
 
-    private void ingest(IssueEvent event) {
+    private void processCapture(QueuedCapture capture) {
+        if (capture instanceof ReadyIssueCapture ready) {
+            ingest(ready.event(), null);
+        } else if (capture instanceof DeferredExceptionCapture deferred) {
+            processDeferredException(deferred);
+        }
+    }
+
+    private void processDeferredException(DeferredExceptionCapture deferred) {
+        if (currentDeployment == null) {
+            return;
+        }
+        String lightKey = lightExceptionKey(
+                deferred.thrown().getClass().getName(),
+                deferred.message(),
+                deferred.threadName()
+        );
+        String knownFingerprint = lightKeyToFingerprint.get(lightKey);
+        if (knownFingerprint != null && issueBuffer.containsKey(knownFingerprint)) {
+            bumpExistingIssue(knownFingerprint, deferred.eventAt());
+            flushIngest(false);
+            return;
+        }
+        long nowMillis = System.currentTimeMillis();
+        boolean fullStack = stormBudget.tryAcquireFullStack(nowMillis);
+        String stack = fullStack
+                ? StackTraceFormatter.format(deferred.thrown())
+                : StackTraceFormatter.cheapTop(deferred.thrown(), 5);
+        List<String> ownership = resolveOwnership(stack, deferred.loggerHints());
+        IssueEvent event = new IssueEvent(
+                null,
+                deferred.eventAt(),
+                currentDeployment.id(),
+                "logger",
+                deferred.severity(),
+                deferred.thrown().getClass().getName(),
+                deferred.message(),
+                stack,
+                ownership,
+                deferred.threadName()
+        );
+        ingest(event, lightKey);
+    }
+
+    private String lightExceptionKey(String throwableType, String message, String threadName) {
+        return fingerprintEngine.normalize(throwableType)
+                + "|" + fingerprintEngine.normalize(message)
+                + "|logger|" + fingerprintEngine.normalize(threadName);
+    }
+
+    private void bumpExistingIssue(String fingerprint, Instant at) {
+        Issue existing = issueBuffer.get(fingerprint);
+        if (existing == null) {
+            return;
+        }
+        Instant now = at == null ? Instant.now() : at;
+        Issue updated = existing.withCount(existing.occurrenceCount() + 1, now);
+        issueBuffer.put(fingerprint, updated);
+        dirtyIssueFingerprints.add(fingerprint);
+    }
+
+    private void ingest(IssueEvent event, String lightKey) {
         String fingerprint = fingerprintEngine.fingerprint(event);
+        if (lightKey != null && !lightKey.isBlank()) {
+            lightKeyToFingerprint.put(lightKey, fingerprint);
+        }
         Instant now = event.eventAt();
         String truncatedStack = truncateSample(event.stackTrace());
         Issue existing = issueBuffer.get(fingerprint);
@@ -1426,7 +1787,7 @@ public final class PlugTraceService implements AutoCloseable {
                     RegressionClass.NONE
             );
             issueBuffer.put(fingerprint, issue);
-            store.saveIssue(currentDeployment.id(), issue);
+            dirtyIssueFingerprints.add(fingerprint);
         } else {
             List<String> samples = rawSamples.computeIfAbsent(fingerprint, k -> new ArrayList<>());
             if (samples.size() < rawSamplesPerIssue && truncatedStack != null && !truncatedStack.isBlank()) {
@@ -1450,12 +1811,45 @@ public final class PlugTraceService implements AutoCloseable {
                 );
             }
             issueBuffer.put(fingerprint, updated);
-            store.saveIssue(currentDeployment.id(), updated);
+            dirtyIssueFingerprints.add(fingerprint);
         }
-        recomputeSuspects();
-        incidentEngine.openForRuntimeIssues(currentDeployment.id(), Instant.now(), currentIssues(),
-                        store.listIncidents(currentDeployment.id(), 100))
-                .ifPresent(store::saveIncident);
+        flushIngest(false);
+    }
+
+    private void flushIngest(boolean force) {
+        if (currentDeployment == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        boolean flushDb = force || now >= nextDbFlushAtMillis || dirtyIssueFingerprints.size() >= 32;
+        boolean flushSuspects = force || now >= nextSuspectsAtMillis;
+        if (flushDb && !dirtyIssueFingerprints.isEmpty()) {
+            for (String fingerprint : Set.copyOf(dirtyIssueFingerprints)) {
+                Issue issue = issueBuffer.get(fingerprint);
+                if (issue != null) {
+                    store.saveIssue(currentDeployment.id(), issue);
+                }
+                dirtyIssueFingerprints.remove(fingerprint);
+            }
+            nextDbFlushAtMillis = now + INGEST_DB_DEBOUNCE_MS;
+        }
+        if (flushSuspects) {
+            if (!dirtyIssueFingerprints.isEmpty()) {
+                for (String fingerprint : Set.copyOf(dirtyIssueFingerprints)) {
+                    Issue issue = issueBuffer.get(fingerprint);
+                    if (issue != null) {
+                        store.saveIssue(currentDeployment.id(), issue);
+                    }
+                    dirtyIssueFingerprints.remove(fingerprint);
+                }
+                nextDbFlushAtMillis = now + INGEST_DB_DEBOUNCE_MS;
+            }
+            recomputeSuspects();
+            incidentEngine.openForRuntimeIssues(currentDeployment.id(), Instant.now(), currentIssues(),
+                            store.listIncidents(currentDeployment.id(), 100))
+                    .ifPresent(store::saveIncident);
+            nextSuspectsAtMillis = now + INGEST_SUSPECTS_DEBOUNCE_MS;
+        }
     }
 
     public List<String> resolveOwnership(String stackTrace, List<String> loggerHints) {
@@ -1468,22 +1862,7 @@ public final class PlugTraceService implements AutoCloseable {
     }
 
     private static String truncateSample(String stack) {
-        if (stack == null || stack.isBlank()) {
-            return "";
-        }
-        String[] lines = stack.split("\\R");
-        int keep = Math.min(lines.length, 40);
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < keep; i++) {
-            if (i > 0) {
-                sb.append('\n');
-            }
-            sb.append(lines[i]);
-        }
-        if (lines.length > 40) {
-            sb.append("\n…");
-        }
-        return sb.toString();
+        return StackTraceFormatter.truncate(stack, 40);
     }
 
     private static String joinSamples(List<String> samples) {
@@ -1544,6 +1923,11 @@ public final class PlugTraceService implements AutoCloseable {
     @Override
     public synchronized void close() {
         running.set(false);
+        try {
+            flushIngest(true);
+        } catch (Exception e) {
+            logger.fine("PlugTrace ingest flush on close: " + e.getMessage());
+        }
         PlugTraceAPI.bind(null);
         if (currentDeployment != null && currentDeployment.endedAt() == null) {
             currentDeployment = currentDeployment.withTermination(
@@ -1552,6 +1936,40 @@ public final class PlugTraceService implements AutoCloseable {
         }
         // SchedulerFacade closed by plugin after service; store must close here.
         store.close();
+    }
+
+    /** Test seam: seed a deployment without a live Bukkit server. */
+    void seedDeploymentForTests(Deployment deployment) {
+        Deployment seeded = Objects.requireNonNull(deployment, "deployment");
+        store.upsertNode(new ServerNode(
+                seeded.nodeId(),
+                "test@" + seeded.nodeId(),
+                "paper",
+                "test",
+                Instant.now()
+        ));
+        this.currentDeployment = seeded;
+        store.saveDeployment(seeded);
+    }
+
+    /** Test seam: process a ready issue synchronously on the calling thread. */
+    void processReadyIssueForTests(IssueEvent event) {
+        ingest(event, null);
+        flushIngest(true);
+    }
+
+    /** Test seam: process a deferred exception synchronously on the calling thread. */
+    void processDeferredExceptionForTests(
+            Instant eventAt,
+            String severity,
+            Throwable thrown,
+            String message,
+            List<String> loggerHints,
+            String threadName
+    ) {
+        processDeferredException(new DeferredExceptionCapture(
+                eventAt, severity, thrown, message, loggerHints, threadName));
+        flushIngest(true);
     }
 
     public RestorePlan restorePreview() {
@@ -1681,6 +2099,7 @@ public final class PlugTraceService implements AutoCloseable {
         store.saveDeployment(currentDeployment);
         annotate("ops", "Restore complete plan=" + planId
                 + " - review /plugtrace verify; mark healthy when stable", "console", null);
+        clearOperatorSticky("Restore complete");
         Files.deleteIfExists(marker);
         if (lastRestorePlan != null) {
             lastRestorePlan = lastRestorePlan.withStatus(RestorePlan.Status.APPLIED);

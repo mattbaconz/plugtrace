@@ -39,7 +39,8 @@ public final class CapabilityRegistry {
         if (!ArtifactIds.BUKKIT_MODERN.equals(artifactId)) {
             set.add(Capability.RICH_LIFECYCLE);
         }
-        if (ArtifactIds.FOLIA.equals(artifactId)) {
+        // Unified release jar (paper-modern) ships folia-supported + Folia scheduler facade.
+        if (ArtifactIds.FOLIA.equals(artifactId) || ArtifactIds.PAPER_MODERN.equals(artifactId)) {
             set.add(Capability.FOLIA_SCHEDULERS);
         }
         return new CapabilityRegistry(set);

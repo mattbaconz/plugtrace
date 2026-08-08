@@ -14,9 +14,10 @@ class CapabilityRegistryTest {
     }
 
     @Test
-    void paperModernDoesNotClaimFoliaSchedulers() {
+    void paperModernIncludesFoliaSchedulersForUnifiedJar() {
         CapabilityRegistry caps = CapabilityRegistry.forArtifact(ArtifactIds.PAPER_MODERN);
-        assertFalse(caps.has(CapabilityRegistry.Capability.FOLIA_SCHEDULERS));
+        assertTrue(caps.has(CapabilityRegistry.Capability.FOLIA_SCHEDULERS));
+        assertTrue(caps.has(CapabilityRegistry.Capability.RICH_LIFECYCLE));
     }
 
     @Test

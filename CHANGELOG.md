@@ -1,20 +1,42 @@
 # Changelog
 
-## 1.0.0 - 2026-07-21
+## Unreleased
 
-Deployment-safety v1 product tag: ritual-first surfaces + spark-like hosted report viewer. **Marketplace listing still frozen** until soak day 7 both targets + owner freeze lift (**D-035**). Prefer first public list as **0.5.1** JARs after soak; this tag marks the usefulness/viewer bar.
+## 1.0.1 - 2026-08-08
+
+Point release: anonymous bStats + lighter exception/ingest/SSE hot paths. Same single-jar Modrinth story as 1.0.0.
 
 ### [added]
-- Ritual-first `/plugtrace status` and local web Overview: health, top changes, strongest suspect, known-churn context, next commands
-- Noise policy: `knownChurn*` in `rules/noise-v1.json` (context over silent suppress); docs `plugtrace-docs/NOISE_POLICY.md`; PlugDev auto-annotate context
-- Hosted report viewer rebuild on plugtrace.dev: identity strip, widgets, lenses (changes/suspects/checks/issues/timeline/env), deep-links (`?suspect=` / `?change=` / `?check=`), local JSON open
-- Report executive summary: `status`, `headline`, `topChanges`, `nextCommand`
+- Anonymous bStats metrics (plugin id 32755) with privacy-safe pies (server family, web/cloud on/off); disable via `metrics.enabled: false` or global `plugins/bStats/config.yml`
 
 ### [changed]
-- Product version **1.0.0**; report schema remains **1.0.0**
+- Exception capture defers stack formatting to the async worker, rate-limits full stacks during storms, and debounces ingest SQLite/suspect recompute
+- Local web SSE status publish already skips work when no `/events` clients are connected
+- Release jar ~4MB (was ~17MB): trimmed SQLite natives to Win/Linux/macOS x64 + Linux/macOS arm64; use server Gson instead of shading Jackson
+
+## 1.0.0 - 2026-08-06
+
+First marketplace release candidate. Deployment-safety ritual + spark-like hosted reports. Soak/trust CLEARED; freeze lifted 2026-07-24.
+
+### [added]
+- Ritual-first `/plugtrace status` and local web Overview (health, changes, suspect, next commands)
+- `/plugtrace share` (hosted encrypted upload — explicit only); FAILING deep-link `?lens=checks`
+- Hosted viewer on plugtrace.dev + local Overview FAILING/HEALTHY hero surfaces
+- Op-join FAILING/DEGRADED digest until `/plugtrace incidents ack|ignore`
+- Opt-in Discord webhook notify (`notify.*`) — redacted FAILING digest, 1/deploy
+- Checkpoint / expected capture / conservative restore workflow
+- Soft integrations: PlaceholderAPI, Vault/LuckPerms checks, updater coexistence note
+
+### [changed]
+- Share UX is capability-URL-first (`#k=` required); compact FAILING ritual chat
+- `/plugtrace verify run` finalizes observation; `verify early` for mid-window probes
+- Checkpoint on UNKNOWN auto-marks HEALTHY then creates (FAILING/DEGRADED/CRASHED still refused)
 
 ### [fixed]
-- (none beyond 0.5.1 packaging)
+- Early verify probes no longer downgrade finalized HEALTHY to UNKNOWN
+- Expected capture only records registered commands (avoids Essentials unbound-command FAILING)
+- RCON/console Adventure ANSI gradients (no raw `§x` dumps)
+- Local web status JSON serializes `Instant` correctly
 
 ## 0.5.1 - 2026-07-19
 

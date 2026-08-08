@@ -1,16 +1,28 @@
-# PlugTrace artifacts — 0.4.0 private alpha
+# PlugTrace artifacts
 
-Nothing here is a marketplace compatibility claim.
+## Release (marketplace)
 
-| Artifact | Java | Descriptor | Evidence status |
-|---|---:|---|---|
-| `PlugTrace-0.4.0.jar` | 21 | Paper-family `plugin.yml` | Paper 1.21.4 / Temurin **21**, Paper 26.1.2 / Temurin **25**, Purpur 1.21.4 / Temurin **21** ephemeral boots passed 2026-07-17; soak day-0 started |
-| `PlugTrace-folia-0.4.0.jar` | 21 | `folia-supported: true` | Folia 1.21.11 / Temurin 21 PlugTrace-only observation harness exercised 2026-07-17; soak day-0 pending calendar |
-| `PlugTrace-bukkit-modern-0.4.0.jar` | 17 | Bukkit descriptor, API 1.20 | Spigot **1.20.1** and **1.20.4** / Temurin 17 live boots passed 2026-07-17; Paper 1.20.4 experimental still recorded |
-| `api-0.4.0.jar` | 17 | Public API | Annotation, safe fields, release identity, verification and migration types |
+| File | Bytecode | Descriptor | Use |
+| --- | --- | --- | --- |
+| **`PlugTrace-1.0.1.jar`** | Java **17** | `api-version: 1.20`, `folia-supported: true` | **Only jar to publish** |
 
-Pufferfish: **Unverified** — no downloadable jar from automated probes (`farm/evidence/pufferfish-availability.md`). Paper 26.2 experimental remains unclaimed.
+Build: `:paper-modern:jar` → `paper-modern/build/libs/PlugTrace-1.0.1.jar`
 
-Evidence summaries: `farm/evidence/*.md`. Farm scripts: `scripts/README.md`.
+## Modrinth metadata (owner max matrix — Experimental)
 
-The embedded `/web` asset tree must appear in every server artifact. Report schema 1.0.0 and every historical schema remain repository contracts.
+**Loaders:** Folia · Paper · Purpur · Spigot · Bukkit  
+
+**Versions:** 1.20–1.20.6 · 1.21–1.21.11 · 26.1 · 26.1.1 · 26.1.2 · **26.2**
+
+## Strong farm / smoke evidence
+
+| Software | Minecraft | Java | Status |
+| --- | --- | --- | --- |
+| Paper | 1.21.4 | 21 | Dogfood + soak |
+| Paper | 26.1.2 | 25 | Dogfood |
+| Paper | **26.2** | 25 | Smoke PASS (enable + Done) 2026-08-06 |
+| Purpur | 1.21.4 | 21 | Dogfood |
+| Folia | 1.21.11 | 21 | Dogfood + soak |
+| Spigot | 1.20.1, 1.20.4 | 17 | Experimental dogfood |
+
+**Do not claim:** Pufferfish, Certified.

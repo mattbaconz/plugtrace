@@ -21,3 +21,9 @@ farm/runs/
 farm/evidence/*.log
 # Keep evidence markdown in the private monorepo only — never sync to mattbaconz/plugtrace
 # Public export must exclude: DOGFOOD.md, RELEASE.md, farm/evidence/**, scripts/trust/**
+# Demo drop kit binaries (built locally)
+examples/test-server/demo-drop/*.jar
+
+node_modules/
+web-ui/node_modules/
+
