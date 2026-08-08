@@ -27,3 +27,7 @@ examples/test-server/demo-drop/*.jar
 node_modules/
 web-ui/node_modules/
 
+
+# Local demo share/token scratch (never publish capability URLs)
+examples/test-server/demo-drop/*.txt
+
