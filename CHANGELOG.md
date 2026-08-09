@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 1.0.2 - 2026-08-09
+
+Point release: share upload reliability, clearer chat spacing, honest LOW-band for change-only suspects.
+
+### [changed]
+- Console/chat ritual output uses blank section breaks (status, suspect, share, FAILING) so blocks are easier to scan
+
+### [fixed]
+- Console status/diff no longer soft-wraps mid-path without a PlugTrace prefix (compact change rows + path-aware wrap)
+- `/plugtrace reload` now rebinds the live config instance so `expected.plugins` patches affect verify (was stuck on boot-time empty lists)
+- `/plugtrace share` report render no longer dies on verification/incident `Instant` fields (Gson)
+- Change-only binary churn no longer ranks as MEDIUM suspect confidence (stays LOW without ownership)
+
 ## 1.0.1 - 2026-08-08
 
 Point release: anonymous bStats + lighter exception/ingest/SSE hot paths. Same single-jar Modrinth story as 1.0.0.

@@ -263,28 +263,28 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
                 + " <dark_gray>-</dark_gray> <gray>deployment</gray> <aqua>#"
                 + current.localSequence() + "</aqua> <dark_gray>("
                 + PlugTraceMessages.escape(current.id()) + ")</dark_gray>");
+        PlugTraceMessages.spacer(sender);
         PlugTraceMessages.row(sender, "Baseline", service.baselineDescription());
         PlugTraceMessages.row(sender, "Changes", String.valueOf(service.currentChanges().size()));
         PlugTraceMessages.row(sender, "Issues", String.valueOf(service.currentIssues().size()));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> topChanges = (List<Map<String, Object>>) ritual.get("topChanges");
         if (topChanges != null && !topChanges.isEmpty()) {
-            PlugTraceMessages.send(sender, "<gradient:#22d3ee:#2dd4bf>Top changes</gradient>");
+            PlugTraceMessages.section(sender, "Top changes");
             for (Map<String, Object> row : topChanges) {
                 boolean churn = Boolean.TRUE.equals(row.get("knownChurn"));
-                PlugTraceMessages.send(sender, "<dark_gray>-</dark_gray> <aqua>"
-                        + PlugTraceMessages.escape(String.valueOf(row.get("type")))
-                        + "</aqua> <white>"
-                        + PlugTraceMessages.escape(String.valueOf(row.get("component")))
-                        + "</white>"
-                        + (churn ? " <dark_gray>[known churn]</dark_gray>" : "")
-                        + (row.get("explanation") == null || String.valueOf(row.get("explanation")).isBlank()
+                String explanation = row.get("explanation") == null
                         ? ""
-                        : " <dark_gray>-</dark_gray> <gray>"
-                        + PlugTraceMessages.escape(String.valueOf(row.get("explanation")))
-                        + "</gray>"));
+                        : String.valueOf(row.get("explanation"));
+                PlugTraceMessages.changeRow(
+                        sender,
+                        String.valueOf(row.get("type")),
+                        String.valueOf(row.get("component")),
+                        explanation,
+                        churn);
             }
         }
+        PlugTraceMessages.spacer(sender);
         @SuppressWarnings("unchecked")
         Map<String, Object> suspect = (Map<String, Object>) ritual.get("strongestSuspect");
         if (suspect == null) {
@@ -312,6 +312,7 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
                 }
             }
         }
+        PlugTraceMessages.spacer(sender);
         @SuppressWarnings("unchecked")
         List<String> nextCommands = (List<String>) ritual.get("nextCommands");
         PlugTraceMessages.send(sender, "<white>Next:</white> <aqua>"
@@ -354,7 +355,12 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         for (Change change : changes) {
-            out(sender, change.type() + " " + change.componentKey() + " - " + change.explanation());
+            PlugTraceMessages.changeRow(
+                    sender,
+                    String.valueOf(change.type()),
+                    change.componentKey(),
+                    change.explanation(),
+                    false);
         }
         return true;
     }
@@ -395,13 +401,22 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             out(sender, "No suspect at rank " + rank);
             return true;
         }
-        out(sender, "Suspect #" + match.rank() + " " + match.componentKey() + " [" + match.band() + "]");
-        out(sender, match.changeSummary());
+        PlugTraceMessages.title(sender, "Suspect #" + match.rank());
+        PlugTraceMessages.send(sender, "<white>"
+                + PlugTraceMessages.escape(match.componentKey()) + "</white> <aqua>["
+                + PlugTraceMessages.escape(match.band().name()) + "]</aqua>");
+        PlugTraceMessages.spacer(sender);
+        PlugTraceMessages.plain(sender, match.changeSummary() == null ? "" : match.changeSummary());
+        PlugTraceMessages.spacer(sender);
         for (var evidence : match.supporting()) {
-            out(sender, "+ [" + evidence.source() + "] " + evidence.explanation());
+            PlugTraceMessages.send(sender, "<green>+</green> <dark_gray>["
+                    + PlugTraceMessages.escape(evidence.source()) + "]</dark_gray> <gray>"
+                    + PlugTraceMessages.escape(evidence.explanation()) + "</gray>");
         }
         for (var evidence : match.contradictions()) {
-            out(sender, "- [" + evidence.source() + "] " + evidence.explanation());
+            PlugTraceMessages.send(sender, "<red>-</red> <dark_gray>["
+                    + PlugTraceMessages.escape(evidence.source()) + "]</dark_gray> <gray>"
+                    + PlugTraceMessages.escape(evidence.explanation()) + "</gray>");
         }
         return true;
     }
@@ -483,12 +498,19 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             out(sender, "Hosted upload requires plugtrace.admin (or console).");
             return true;
         }
-        out(sender, "Uploading redacted reportâ€¦");
+        PlugTraceMessages.plain(sender, "Uploading redacted report...");
         ReportService.ReportArtifacts artifacts;
         try {
             artifacts = service.generateReport();
         } catch (RuntimeException e) {
-            out(sender, "Local report generation failed; nothing uploaded: " + e.getMessage());
+            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            if (e.getCause() != null && e.getCause().getMessage() != null
+                    && !detail.contains(e.getCause().getMessage())) {
+                detail = detail + " (" + e.getCause().getMessage() + ")";
+            }
+            PlugTraceMessages.spacer(sender);
+            PlugTraceMessages.fail(sender, "Local report generation failed; nothing uploaded: " + detail);
+            plugin.getLogger().warning("PlugTrace report generation failed: " + detail);
             return true;
         }
         try {
@@ -502,18 +524,22 @@ public final class PlugTraceCommand implements CommandExecutor, TabCompleter {
             String shareUrl = HostedReportClient.withViewerDeepLink(
                     result.shareUrl(), service.currentHealthName());
             service.recordHostedReport(result.id(), shareUrl, result.expiresAt(), result.deleteToken());
-            out(sender, "Share ready");
+            PlugTraceMessages.spacer(sender);
+            PlugTraceMessages.ok(sender, "Share ready");
+            PlugTraceMessages.spacer(sender);
             PlugTraceMessages.sendOpenUrl(sender, shareUrl);
             if (result.expiresAt() != null) {
-                out(sender, "Expires " + result.expiresAt());
+                PlugTraceMessages.plain(sender, "Expires " + result.expiresAt());
             }
             PlugTraceMessages.sendPrivateToken(sender, result.deleteToken());
             if (service.sparkDetected()) {
-                out(sender, "Lag? Attach spark: /plugtrace spark link <url>");
+                PlugTraceMessages.spacer(sender);
+                PlugTraceMessages.plain(sender, "Lag? Attach spark: /plugtrace spark link <url>");
             }
             return true;
         } catch (Exception e) {
-            out(sender, "Hosted upload failed; local report files remain: " + e.getMessage());
+            PlugTraceMessages.spacer(sender);
+            PlugTraceMessages.fail(sender, "Hosted upload failed; local report files remain: " + e.getMessage());
             plugin.getLogger().warning("Hosted report upload failed: " + e.getMessage());
             return true;
         }

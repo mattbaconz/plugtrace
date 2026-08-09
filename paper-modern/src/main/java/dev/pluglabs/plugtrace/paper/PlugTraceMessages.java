@@ -39,6 +39,14 @@ public final class PlugTraceMessages {
                     + "<gradient:#e2e8f0:#94a3b8><bold>PlugTrace</bold></gradient> "
                     + "<dark_gray>|</dark_gray> ";
 
+    /**
+     * Soft max visible body columns before another prefixed line.
+     * Narrow PowerShell panes soft-wrap mid-token and drop the brand prefix — looks truncated.
+     */
+    public static final int MAX_BODY_COLS = ConsoleLineFormat.MAX_BODY_COLS;
+    public static final int MAX_COMPONENT_COLS = ConsoleLineFormat.MAX_COMPONENT_COLS;
+    public static final int MAX_EXPLANATION_COLS = ConsoleLineFormat.MAX_EXPLANATION_COLS;
+
     /** Clickable / suggestable next-action chip for compact ritual rows. */
     public record ActionChip(String label, String command) {
     }
@@ -195,7 +203,48 @@ public final class PlugTraceMessages {
 
     /** Escape plain text and send as muted body under the brand prefix. */
     public static void plain(CommandSender sender, String plainText) {
-        send(sender, "<gray>" + escape(plainText) + "</gray>");
+        for (String chunk : ConsoleLineFormat.wrapPlain(plainText, MAX_BODY_COLS)) {
+            send(sender, "<gray>" + escape(chunk) + "</gray>");
+        }
+    }
+
+    /**
+     * Status / diff change row: short first line + optional explanation.
+     * Avoids mega-lines that soft-wrap mid-path without a PlugTrace prefix.
+     */
+    public static void changeRow(
+            CommandSender sender,
+            String type,
+            String component,
+            String explanation,
+            boolean knownChurn) {
+        String compactComp = ConsoleLineFormat.shortComponentKey(component);
+        StringBuilder line = new StringBuilder();
+        line.append("<dark_gray>-</dark_gray> <aqua>")
+                .append(escape(type == null ? "?" : type))
+                .append("</aqua> <white>")
+                .append(escape(compactComp))
+                .append("</white>");
+        if (knownChurn) {
+            line.append(" <dark_gray>[known churn]</dark_gray>");
+        }
+        send(sender, line.toString());
+        String expl = ConsoleLineFormat.shortenExplanation(explanation, component);
+        if (expl != null && !expl.isBlank()) {
+            for (String chunk : ConsoleLineFormat.wrapPlain(expl, MAX_EXPLANATION_COLS)) {
+                send(sender, "<dark_gray>  </dark_gray><gray>" + escape(chunk) + "</gray>");
+            }
+        }
+    }
+
+    /** Middle-ellipsis for long paths / keys so one console row stays readable. */
+    public static String compactLabel(String text, int maxChars) {
+        return ConsoleLineFormat.compactLabel(text, maxChars);
+    }
+
+    /** Word/path-aware wrap; each chunk is sent as its own prefixed message. */
+    public static List<String> wrapPlain(String text, int maxCols) {
+        return ConsoleLineFormat.wrapPlain(text, maxCols);
     }
 
     public static void ok(CommandSender sender, String plainText) {
@@ -215,12 +264,45 @@ public final class PlugTraceMessages {
     }
 
     public static void row(CommandSender sender, String label, String value) {
-        send(sender, "<dark_gray>-</dark_gray> <gray>" + escape(label) + ":</gray> <white>"
-                + escape(value) + "</white>");
+        String safeLabel = label == null ? "" : label;
+        String safeValue = value == null ? "" : value;
+        if (safeValue.length() <= 60) {
+            send(sender, "<dark_gray>-</dark_gray> <gray>" + escape(safeLabel) + ":</gray> <white>"
+                    + escape(safeValue) + "</white>");
+            return;
+        }
+        send(sender, "<dark_gray>-</dark_gray> <gray>" + escape(safeLabel) + ":</gray>");
+        for (String chunk : ConsoleLineFormat.wrapPlain(safeValue, MAX_BODY_COLS)) {
+            send(sender, "<dark_gray>  </dark_gray><white>" + escape(chunk) + "</white>");
+        }
     }
 
     public static void title(CommandSender sender, String titlePlain) {
         send(sender, "<gradient:#22d3ee:#2dd4bf><bold>" + escape(titlePlain) + "</bold></gradient>");
+    }
+
+    /**
+     * Blank visual line between chat sections (Minecraft drops empty components).
+     * No brand prefix — keeps the wall of {@code * PlugTrace |} from blending.
+     */
+    public static void spacer(CommandSender sender) {
+        sendComponent(sender, Component.text(" ").color(NamedTextColor.DARK_GRAY));
+    }
+
+    /** Spacer + gradient section title. */
+    public static void section(CommandSender sender, String titlePlain) {
+        spacer(sender);
+        title(sender, titlePlain);
+    }
+
+    /** Console ritual equivalent of {@link #spacer}. */
+    public static void consoleSpacer(Logger logger) {
+        Audience audience = console();
+        if (audience != Audience.empty()) {
+            audience.sendMessage(Component.text(" ").color(NamedTextColor.DARK_GRAY));
+        } else {
+            logger.info(" ");
+        }
     }
 
     public static Component healthLabel(DeploymentHealth health) {
@@ -331,13 +413,6 @@ public final class PlugTraceMessages {
     }
 
     public static String shortComponentKey(String key) {
-        if (key == null) {
-            return "";
-        }
-        String k = key;
-        if (k.regionMatches(true, 0, "PLUGIN:", 0, 7)) {
-            k = k.substring(7);
-        }
-        return k;
+        return ConsoleLineFormat.shortComponentKey(key);
     }
 }

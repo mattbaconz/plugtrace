@@ -27,28 +27,48 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $root
 
+# Paper 26.x needs JDK 25+; ensure headless start sees it.
+$resolveJava = Join-Path $root 'scripts\Resolve-JavaHome.ps1'
+if (Test-Path $resolveJava) {
+    . $resolveJava
+    $jh = Get-PlugTraceJavaHome 25
+    if ($jh) { $env:JAVA_HOME = $jh }
+}
+
 $plugins = Join-Path $root '.plugdev\run\plugins'
 $fixturePattern = Join-Path $plugins 'PlugTraceFixture-*.jar'
 $drop = Join-Path $PSScriptRoot 'demo-drop'
 $fixtureSource = Get-ChildItem (Join-Path $drop 'PlugTraceFixture-DelayedError-*.jar') -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
+# npx writes progress to stderr; with ErrorAction Stop that becomes a terminating NativeCommandError.
+function Invoke-Npx([string[]]$PlugArgs) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = & npx --yes $Cli @PlugArgs 2>&1 | ForEach-Object { "$_" }
+        return @{ Code = $LASTEXITCODE; Out = @($out) }
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 function Invoke-Plug([string[]]$PlugArgs) {
-    $out = & npx --yes $Cli @PlugArgs 2>&1 | ForEach-Object { "$_" }
-    $code = $LASTEXITCODE
-    if ($out) { $out | ForEach-Object { Write-Host $_ } }
-    if ($code -ne 0) { throw "plugdev $($PlugArgs -join ' ') failed ($code)" }
+    $result = Invoke-Npx $PlugArgs
+    if ($result.Out) { $result.Out | ForEach-Object { Write-Host $_ } }
+    if ($result.Code -ne 0) { throw "plugdev $($PlugArgs -join ' ') failed ($($result.Code))" }
 }
 
 function Invoke-PlugCmd([string]$Command) {
     Write-Host ">>> $Command" -ForegroundColor Cyan
-    & npx --yes $Cli server command $Command 2>&1 | ForEach-Object { Write-Host $_ }
+    $result = Invoke-Npx @('server', 'command', $Command)
+    if ($result.Out) { $result.Out | ForEach-Object { Write-Host $_ } }
 }
 
 function Wait-ServerReady {
     $deadline = (Get-Date).AddSeconds($ReadyTimeoutSec)
     while ((Get-Date) -lt $deadline) {
-        $status = (& npx --yes $Cli server status 2>&1 | ForEach-Object { "$_" }) -join "`n"
+        $status = (Invoke-Npx @('server', 'status')).Out -join "`n"
         if ($status -match 'Running pid') {
             Start-Sleep -Seconds 12
             return
@@ -65,12 +85,14 @@ if (-not (Test-Path $plugins)) {
 }
 
 # Stop if running so jar add/remove takes effect on next boot.
-$statusText = (& npx --yes $Cli server status 2>&1 | ForEach-Object { "$_" }) -join "`n"
+$statusText = (Invoke-Npx @('server', 'status')).Out -join "`n"
 $running = $statusText -match 'Running pid'
 if ($running) {
     Write-Host 'Stopping server (jar changes need a restart)...'
     Write-Host 'If plug run is open in another terminal, press Ctrl+C there first if stop fails.'
-    Invoke-Plug @('server', 'stop')
+    # Prefer stop; ignore "no session" — jar swap still applies on next start.
+    $stop = Invoke-Npx @('server', 'stop')
+    if ($stop.Out) { $stop.Out | ForEach-Object { Write-Host $_ } }
     Start-Sleep -Seconds 6
 }
 
@@ -102,10 +124,29 @@ if ($Mode -eq 'Healthy') {
     Get-ChildItem $fixturePattern -ErrorAction SilentlyContinue | Remove-Item -Force
     Copy-Item $fixtureSource.FullName $plugins -Force
     Write-Host "Installed break jar: $($fixtureSource.Name)"
+
+    # Fixture issues alone often stay ONGOING/NONE after dogfood — force expected-plugins FAIL.
+    $breakPlugin = 'ThumbnailBreakPlugin'
+    $cfg = Join-Path $plugins 'PlugTrace\config.yml'
+    if (-not (Test-Path $cfg)) {
+        throw "Missing $cfg - boot once first."
+    }
+    $cfgText = [IO.File]::ReadAllText($cfg)
+    $cfgText = [regex]::Replace($cfgText, '(?ms)expected:\s*\r?\n\s*plugins:.*?\r?\n\s*commands:', @"
+expected:
+  plugins:
+    - $breakPlugin
+  commands:
+"@)
+    if ($cfgText -notmatch [regex]::Escape($breakPlugin)) {
+        throw "Could not patch expected.plugins in $cfg"
+    }
+    [IO.File]::WriteAllText($cfg, $cfgText)
+    Write-Host "Patched expected.plugins += $breakPlugin (forces FAILING verify)"
 }
 
 Write-Host 'Starting server (headless)...'
-Invoke-Plug @('server', 'start')
+Invoke-Plug @('server', 'start', '--no-watch')
 
 Wait-ServerReady
 
@@ -126,14 +167,17 @@ if ($Mode -eq 'Healthy') {
     Write-Host 'Web token: plugtrace web token create demo admin  (in plug run console, not RCON)'
 } else {
     Write-Host 'Forcing FAILING verification...'
-    Start-Sleep -Seconds 5
+    Start-Sleep -Seconds 6
+    Invoke-PlugCmd 'plugtrace reload'
+    Start-Sleep -Seconds 2
     Invoke-PlugCmd 'plugtrace verify run'
-    Start-Sleep -Seconds 8
+    Start-Sleep -Seconds 12
+    Invoke-PlugCmd 'plugtrace verify status'
     Invoke-PlugCmd 'plugtrace status'
     Write-Host ''
     Write-Host 'FAILING mode ready.' -ForegroundColor Red
-    Write-Host 'Screenshot: FAILING lines in plug run log, or refresh web Overview.'
-    Write-Host 'Share URL: plugtrace share'
+    Write-Host 'In plug run: plugtrace status   then   plugtrace share'
+    Write-Host 'Hosted dashboard: open the full plugtrace.dev URL from share.'
 }
 
 Write-Host ''

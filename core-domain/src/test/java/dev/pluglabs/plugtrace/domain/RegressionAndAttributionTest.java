@@ -31,6 +31,39 @@ class RegressionAndAttributionTest {
     }
 
     @Test
+    void changeOnlyBinaryChurnStaysLowConfidence() {
+        Change change = new Change(
+                ChangeType.BINARY_CHANGED_SAME_VERSION,
+                "PLUGIN:plugtrace",
+                "aaa",
+                "bbb",
+                "Version remains 1.0.1, but binary hash changed.",
+                90
+        );
+        Issue issue = new Issue(
+                "i1",
+                "fp1",
+                "exception",
+                "unrelated fixture",
+                List.of("logger:SomeOther"),
+                Instant.parse("2026-07-13T00:00:00Z"),
+                Instant.parse("2026-07-13T00:00:01Z"),
+                IssueStatus.NEW,
+                "error",
+                1,
+                null,
+                RegressionClass.NEW_ISSUE
+        );
+
+        List<Suspect> suspects = new AttributionEngine().attribute(List.of(issue), List.of(change));
+        Suspect plugtrace = suspects.stream()
+                .filter(s -> s.componentKey().equals("PLUGIN:plugtrace"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(ConfidenceBand.LOW, plugtrace.band());
+    }
+
+    @Test
     void attributionPrefersOwnershipPlusChange() {
         Change change = new Change(
                 ChangeType.BINARY_CHANGED_SAME_VERSION,

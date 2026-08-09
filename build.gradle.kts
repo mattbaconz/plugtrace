@@ -6,7 +6,7 @@ plugins {
 
 allprojects {
     group = "dev.pluglabs.plugtrace"
-    version = "1.0.1"
+    version = "1.0.2"
 
     repositories {
         mavenCentral()
@@ -114,9 +114,9 @@ tasks.register("matrixSmoke") {
         println("bukkit-modern | Bukkit       | Spigot 1.20.1+1.20.4/Java 17 live PASS; Experimental capability set")
         println("pufferfish                   | Unverified (no downloadable jar from farm probes)")
         println("legacy/proxy/modloader       | deferred")
-        println("Upgrade notes: DB schema v3, report 1.0.0, product 1.0.1")
+        println("Upgrade notes: DB schema v3, report 1.0.0, product 1.0.2")
         println("Web UI: bundled under paper-modern/src/main/resources/web (copied to folia/bukkit JARs)")
-        println("Release checklist: v1.0.1 product (bStats + hot-path lightening); marketplace single jar")
+        println("Release checklist: v1.0.2 product (share fix, chat spacing, demo ritual); marketplace single jar")
         println("OK - claims must match ARTIFACTS.md and /plugtrace compatibility")
     }
 }

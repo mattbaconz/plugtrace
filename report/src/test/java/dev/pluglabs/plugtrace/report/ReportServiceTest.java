@@ -3,11 +3,17 @@ package dev.pluglabs.plugtrace.report;
 import dev.pluglabs.plugtrace.domain.Annotation;
 import dev.pluglabs.plugtrace.domain.Change;
 import dev.pluglabs.plugtrace.domain.ChangeType;
+import dev.pluglabs.plugtrace.domain.CheckCriticality;
+import dev.pluglabs.plugtrace.domain.CheckResult;
+import dev.pluglabs.plugtrace.domain.CheckStatus;
 import dev.pluglabs.plugtrace.domain.ConfidenceBand;
 import dev.pluglabs.plugtrace.domain.Deployment;
 import dev.pluglabs.plugtrace.domain.DeploymentHealth;
 import dev.pluglabs.plugtrace.domain.DeploymentLifecycle;
+import dev.pluglabs.plugtrace.domain.DeploymentVerification;
 import dev.pluglabs.plugtrace.domain.Evidence;
+import dev.pluglabs.plugtrace.domain.Incident;
+import dev.pluglabs.plugtrace.domain.IncidentStatus;
 import dev.pluglabs.plugtrace.domain.Issue;
 import dev.pluglabs.plugtrace.domain.IssueStatus;
 import dev.pluglabs.plugtrace.domain.RegressionClass;
@@ -185,5 +191,73 @@ class ReportServiceTest {
         assertTrue(artifacts.json().contains("pluginFields"));
         assertTrue(artifacts.json().contains("skyblock"));
         assertTrue(artifacts.markdown().contains("Plugin safe fields"));
+    }
+
+    @Test
+    void rendersWhenVerificationAndIncidentsContainInstants() {
+        Deployment current = Deployment.builder()
+                .id("d9")
+                .localSequence(9)
+                .nodeId("n1")
+                .lifecycle(DeploymentLifecycle.OBSERVING)
+                .health(DeploymentHealth.FAILING)
+                .serverImplementation("Paper")
+                .minecraftVersion("26.1.2")
+                .javaVersion("25")
+                .javaVendor("Temurin")
+                .stateFingerprint("fp")
+                .build();
+
+        DeploymentVerification verification = new DeploymentVerification(
+                "v1",
+                "d9",
+                Instant.parse("2026-08-09T12:00:00Z"),
+                DeploymentHealth.FAILING,
+                List.of(new CheckResult(
+                        "expected-plugins",
+                        "Expected plugins",
+                        CheckStatus.FAIL,
+                        CheckCriticality.CRITICAL,
+                        "Missing or disabled: thumbnailbreakplugin",
+                        Map.of("missing", List.of("thumbnailbreakplugin"))
+                )),
+                true,
+                false
+        );
+        Incident incident = new Incident(
+                "inc1",
+                "d9",
+                "v1",
+                Instant.parse("2026-08-09T12:00:01Z"),
+                null,
+                IncidentStatus.OPEN,
+                "Deployment verification failing",
+                List.of(),
+                List.of("expected-plugins")
+        );
+
+        ReportService.ReportArtifacts artifacts = new ReportService().generate(new ReportRequest(
+                current,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "Baseline #6",
+                Map.of("detected", false),
+                Map.of("type", "deployment"),
+                Map.of("fork", "paper"),
+                Map.of(),
+                Map.of(),
+                null,
+                verification,
+                List.of(incident),
+                "hash-only-config"
+        ));
+
+        assertTrue(artifacts.json().contains("expected-plugins"));
+        assertTrue(artifacts.json().contains("2026-08-09T12:00:00Z"));
+        assertTrue(artifacts.json().contains("inc1"));
+        assertTrue(artifacts.html().contains("FAILING"));
     }
 }

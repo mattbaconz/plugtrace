@@ -50,7 +50,7 @@ if (-not $SkipClean) {
 }
 
 if (-not $SkipBuild) {
-    Write-Host '=== Build PlugTrace 1.0.0 + demo fixtures ==='
+    Write-Host '=== Build PlugTrace 1.0.2 + demo fixtures ==='
     $webUi = Join-Path $root 'web-ui'
     if (-not (Test-Path (Join-Path $webUi 'node_modules'))) {
         Push-Location $webUi
@@ -132,7 +132,7 @@ if (-not $SkipDeps) {
 Write-Host '=== Record deps from plugdev.yml ==='
 Invoke-PlugDev -PlugArgs @('deps', 'list')
 
-$ptJar = Join-Path $root 'paper-modern\build\libs\PlugTrace-1.0.0.jar'
+$ptJar = Join-Path $root 'paper-modern\build\libs\PlugTrace-1.0.2.jar'
 if (-not (Test-Path $ptJar)) { throw "Missing product jar: $ptJar" }
 
 Write-Host @"

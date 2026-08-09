@@ -1,7 +1,7 @@
 # PlugTrace demo PlugDev server
 
 Paper **26.1.2** · flat world · creative · offline · 4G · Prism `FO 26.1.2`  
-Product jar: `PlugTrace-1.0.0.jar` (latest UI for filming). Listing copy may still say 0.5.1.
+Product jar: `PlugTrace-1.0.2.jar` (latest UI for filming).
 
 Single entrypoint when filming Modrinth / Spigot assets.
 

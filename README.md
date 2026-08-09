@@ -2,7 +2,7 @@
 
 <img src="brand/plugtrace-logo.png" alt="PlugTrace" width="128" />
 
-# PlugTrace · v1.0.1
+# PlugTrace · v1.0.2
 
 ---
 
@@ -25,11 +25,11 @@ After every risky restart: `/plugtrace status` — `HEALTHY` / `FAILING` / `DEGR
 
 ## Status
 
-**1.0.1 deployment-safety** - ritual-first status + spark-like hosted report viewer + optional anonymous [bStats](https://bstats.org/plugin/bukkit/PlugTrace/32755) (`metrics.enabled`, or global `plugins/bStats/config.yml`). Optional hosted report sharing on [plugtrace.dev](https://plugtrace.dev) after explicit `/plugtrace share` (alias of `report upload`) - nothing uploads automatically.
+**1.0.2 deployment-safety** - ritual-first status + spark-like hosted report viewer + optional anonymous [bStats](https://bstats.org/plugin/bukkit/PlugTrace/32755) (`metrics.enabled`, or global `plugins/bStats/config.yml`). Optional hosted report sharing on [plugtrace.dev](https://plugtrace.dev) after explicit `/plugtrace share` (alias of `report upload`) - nothing uploads automatically.
 
 ## Quick start
 
-1. Download **`PlugTrace-1.0.1.jar`** (one jar for Paper / Purpur / Folia / Spigot 1.20.x) from [Releases](https://github.com/mattbaconz/plugtrace/releases).
+1. Download **`PlugTrace-1.0.2.jar`** (one jar for Paper / Purpur / Folia / Spigot 1.20.x) from [Releases](https://github.com/mattbaconz/plugtrace/releases).
 2. Drop into `plugins/` and restart **while the server is still healthy**.
 3. `/plugtrace selfcheck` · wait for `HEALTHY` · `/plugtrace checkpoint` · `/plugtrace expected capture` · `/plugtrace mark healthy`
 4. After a risky update / restart: `/plugtrace status` (PASS/FAIL ritual). On `FAILING`: `/plugtrace share` to open a deployment report on plugtrace.dev like a spark profile (explicit only; paste the full URL including `#k=…`).
@@ -55,7 +55,7 @@ To co-install PlugTrace while developing another plugin, in that project's `plug
 integrations:
   plugtrace:
     enabled: true
-    jar: path/to/PlugTrace-1.0.1.jar
+    jar: path/to/PlugTrace-1.0.2.jar
     artifact: auto
 ```
 

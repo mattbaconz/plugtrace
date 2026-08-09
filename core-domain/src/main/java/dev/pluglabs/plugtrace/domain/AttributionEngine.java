@@ -161,8 +161,9 @@ public final class AttributionEngine {
         if (candidate.strongOwnership && hasChange && !hasContradiction && candidate.score >= 120) {
             return ConfidenceBand.HIGH;
         }
-        if ((hasOwnership && hasChange) || candidate.score >= 90) {
-            return hasContradiction ? ConfidenceBand.MEDIUM : ConfidenceBand.MEDIUM;
+        // Change-only binary churn (score 90) must stay LOW — MEDIUM needs ownership + change.
+        if (hasOwnership && hasChange) {
+            return ConfidenceBand.MEDIUM;
         }
         if (hasOwnership || hasChange) {
             return ConfidenceBand.LOW;

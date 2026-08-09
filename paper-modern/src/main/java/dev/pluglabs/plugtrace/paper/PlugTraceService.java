@@ -119,7 +119,7 @@ public final class PlugTraceService implements AutoCloseable {
 
     private final Logger logger;
     private final Path dataFolder;
-    private final FileConfiguration config;
+    private FileConfiguration config;
     private final TraceStore store;
     private final SnapshotCollector snapshotCollector;
     private final DiffEngine diffEngine = new DiffEngine();
@@ -215,6 +215,16 @@ public final class PlugTraceService implements AutoCloseable {
         this.store = new SqliteTraceStore(dataFolder.resolve("plugtrace.db"));
         this.snapshotCollector = new SnapshotCollector();
         applyOperatorConfig(OperatorConfig.from(config), true);
+    }
+
+    /**
+     * Point at the FileConfiguration from {@code JavaPlugin#getConfig()} after {@code reloadConfig()}.
+     * Bukkit allocates a new config object on reload; without this, expected.* stays stale.
+     */
+    public void replaceConfig(FileConfiguration config) {
+        if (config != null) {
+            this.config = config;
+        }
     }
 
     /**
@@ -689,6 +699,7 @@ public final class PlugTraceService implements AutoCloseable {
                 health,
                 currentDeployment.localSequence(),
                 window);
+        PlugTraceMessages.consoleSpacer(logger);
 
         checks.stream()
                 .filter(r -> r.status() == CheckStatus.FAIL || r.status() == CheckStatus.WARN)
@@ -716,6 +727,7 @@ public final class PlugTraceService implements AutoCloseable {
                 .limit(5)
                 .toList();
         if (!jarChanges.isEmpty()) {
+            PlugTraceMessages.consoleSpacer(logger);
             StringBuilder jars = new StringBuilder("<gray>JARs:</gray> ");
             boolean first = true;
             for (Change c : jarChanges) {
@@ -740,6 +752,7 @@ public final class PlugTraceService implements AutoCloseable {
                             + ") — JAR deltas may be intentional swaps.</gray>");
         }
 
+        PlugTraceMessages.consoleSpacer(logger);
         PlugTraceMessages.consoleActionRow(logger, List.of(
                 new PlugTraceMessages.ActionChip("restore", "/plugtrace restore preview"),
                 new PlugTraceMessages.ActionChip("share", "/plugtrace share"),

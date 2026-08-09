@@ -4,8 +4,11 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import dev.pluglabs.plugtrace.domain.Annotation;
 import dev.pluglabs.plugtrace.domain.Change;
+import dev.pluglabs.plugtrace.domain.CheckResult;
 import dev.pluglabs.plugtrace.domain.ConfidenceBand;
 import dev.pluglabs.plugtrace.domain.Deployment;
+import dev.pluglabs.plugtrace.domain.DeploymentVerification;
+import dev.pluglabs.plugtrace.domain.Incident;
 import dev.pluglabs.plugtrace.domain.Issue;
 import dev.pluglabs.plugtrace.domain.Sha256Hasher;
 import dev.pluglabs.plugtrace.domain.Suspect;
@@ -98,8 +101,9 @@ public final class ReportService {
         json.put("changes", request.changes().stream().map(this::changeMap).toList());
         json.put("issues", request.issues().stream().map(this::issueMap).toList());
         json.put("suspects", request.suspects().stream().map(this::suspectMap).toList());
-        json.put("verification", request.verification());
-        json.put("incidents", request.incidents());
+        // Gson cannot reliably serialize java.time.Instant records — map to strings/maps first.
+        json.put("verification", verificationMap(request.verification()));
+        json.put("incidents", request.incidents().stream().map(this::incidentMap).toList());
         json.put("annotations", request.annotations().stream().map(this::annotationMap).toList());
         json.put("spark", request.spark());
 
@@ -112,8 +116,49 @@ public final class ReportService {
             String artifactHash = Sha256Hasher.hashString(jsonText);
             return new ReportArtifacts(jsonText, markdown, html, discord, github, artifactHash, SCHEMA_VERSION, request.previewSections());
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to render PlugTrace report", e);
+            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            throw new IllegalStateException("Failed to render PlugTrace report: " + detail, e);
         }
+    }
+
+    private Map<String, Object> verificationMap(DeploymentVerification verification) {
+        if (verification == null) {
+            return Map.of();
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", verification.id());
+        map.put("deploymentId", verification.deploymentId());
+        map.put("verifiedAt", verification.verifiedAt().toString());
+        map.put("health", verification.health().name());
+        map.put("observationWindowComplete", verification.observationWindowComplete());
+        map.put("newSevereIssue", verification.newSevereIssue());
+        map.put("checks", verification.checks().stream().map(this::checkMap).toList());
+        return map;
+    }
+
+    private Map<String, Object> checkMap(CheckResult check) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("checkId", check.checkId());
+        map.put("displayName", check.displayName());
+        map.put("status", check.status().name());
+        map.put("criticality", check.criticality().name());
+        map.put("summary", redaction.redact(check.summary()));
+        map.put("details", check.safeDetails() == null ? Map.of() : check.safeDetails());
+        return map;
+    }
+
+    private Map<String, Object> incidentMap(Incident incident) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", incident.id());
+        map.put("deploymentId", incident.deploymentId());
+        map.put("verificationId", incident.verificationId());
+        map.put("openedAt", incident.openedAt() == null ? null : incident.openedAt().toString());
+        map.put("resolvedAt", incident.resolvedAt() == null ? null : incident.resolvedAt().toString());
+        map.put("status", incident.status().name());
+        map.put("summary", redaction.redact(incident.summary()));
+        map.put("issueFingerprints", incident.issueFingerprints());
+        map.put("failedCheckIds", incident.failedCheckIds());
+        return map;
     }
 
     private Map<String, Object> buildExecutiveSummary(ReportRequest request) {
@@ -200,14 +245,16 @@ public final class ReportService {
         map.put("component", suspect.componentKey());
         map.put("band", suspect.band().name());
         map.put("summary", suspect.changeSummary());
-        map.put("supporting", suspect.supporting().stream().map(e -> Map.of(
-                "source", e.source(),
-                "explanation", e.explanation()
-        )).toList());
-        map.put("contradictions", suspect.contradictions().stream().map(e -> Map.of(
-                "source", e.source(),
-                "explanation", e.explanation()
-        )).toList());
+        map.put("supporting", suspect.supporting().stream().map(this::evidenceMap).toList());
+        map.put("contradictions", suspect.contradictions().stream().map(this::evidenceMap).toList());
+        return map;
+    }
+
+    private Map<String, Object> evidenceMap(dev.pluglabs.plugtrace.domain.Evidence evidence) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("source", evidence.source() == null ? "" : evidence.source());
+        map.put("explanation", evidence.explanation() == null ? "" : evidence.explanation());
+        map.put("strength", evidence.strength());
         return map;
     }
 

@@ -77,6 +77,9 @@ public final class PlugTracePlugin extends JavaPlugin implements Listener {
     public List<String> reloadOperatorConfig() {
         List<String> messages = new ArrayList<>();
         reloadConfig();
+        // reloadConfig() replaces the FileConfiguration instance — service must see the new one
+        // or expected.plugins patches never affect verify (stale empty lists → false HEALTHY).
+        service.replaceConfig(getConfig());
         OperatorConfig next = OperatorConfig.from(getConfig());
         messages.addAll(service.applyOperatorConfig(next));
         messages.add("retention/privacy/expected re-applied");

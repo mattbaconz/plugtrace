@@ -4,9 +4,9 @@
 
 | File | Bytecode | Descriptor | Use |
 | --- | --- | --- | --- |
-| **`PlugTrace-1.0.1.jar`** | Java **17** | `api-version: 1.20`, `folia-supported: true` | **Only jar to publish** |
+| **`PlugTrace-1.0.2.jar`** | Java **17** | `api-version: 1.20`, `folia-supported: true` | **Only jar to publish** |
 
-Build: `:paper-modern:jar` → `paper-modern/build/libs/PlugTrace-1.0.1.jar`
+Build: `:paper-modern:jar` → `paper-modern/build/libs/PlugTrace-1.0.2.jar`
 
 ## Modrinth metadata (owner max matrix — Experimental)
 

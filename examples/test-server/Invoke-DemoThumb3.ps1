@@ -68,11 +68,13 @@ function Set-ThumbBreakExpected([bool]$Enable) {
     # Strip prior thumb break lines
     $text = [regex]::Replace($text, "(?m)^\s*-\s*$([regex]::Escape($breakPlugin))\s*\r?\n", '')
     if ($Enable) {
-        if ($text -match '(?ms)(expected:\s*\r?\n\s*plugins:\s*\r?\n)(\s*commands:)') {
-            $text = $text -replace '(?ms)(expected:\s*\r?\n\s*plugins:\s*\r?\n)', "`$1  - $breakPlugin`r`n"
-        } elseif ($text -match '(?ms)expected:\s*\r?\n\s*plugins:\s*\[\s*\]') {
-            $text = $text -replace 'plugins:\s*\[\s*\]', "plugins:`r`n  - $breakPlugin"
-        } else {
+        $text = [regex]::Replace($text, '(?ms)expected:\s*\r?\n\s*plugins:.*?\r?\n\s*commands:', @"
+expected:
+  plugins:
+    - $breakPlugin
+  commands:
+"@)
+        if ($text -notmatch [regex]::Escape($breakPlugin)) {
             throw "Could not patch expected.plugins in $cfg"
         }
     }

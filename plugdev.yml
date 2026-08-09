@@ -7,7 +7,7 @@ build:
   task: build
   jarTask: jar
   module: paper-modern
-  jarPattern: paper-modern/build/libs/PlugTrace-1.0.1.jar
+  jarPattern: paper-modern/build/libs/PlugTrace-1.0.2.jar
 client:
   launcher: prism
   instance: FO 26.1.2
@@ -25,8 +25,6 @@ dev:
   op: true
   peaceful: true
   onlineMode: false
-# Versions recorded 2026-07-25 demo smoke (Paper 26.1.2). Omit floating "latest" pins in docs;
-# PlugDev resolves from cache/presets when version is omitted.
 deps:
   - name: luckperms
     source: modrinth
